@@ -1,0 +1,16 @@
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# Runtime
+logs/
+state.json
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# Credentials (never commit)
+credentials.json
+*.properties

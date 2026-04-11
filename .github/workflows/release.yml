@@ -1,0 +1,83 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v1.2.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ── macOS (arm64 — runs on Intel via Rosetta 2) ────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller rumps pillow certifi
+          pip install -r sync/requirements.txt
+
+      - name: Build arm64 .app
+        run: python -m PyInstaller kairos.spec --noconfirm
+
+      - name: Create DMG
+        run: |
+          VERSION="${{ github.ref_name || inputs.version }}"
+          hdiutil create \
+            -volname "Kairos Agent" \
+            -srcfolder dist/Kairos.app \
+            -ov -format UDZO \
+            "dist/Kairos-${VERSION}-mac.dmg"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || inputs.version }}
+          files: dist/Kairos-*-mac.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Windows ────────────────────────────────────────────────────────────────
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller pystray pillow plyer
+          pip install -r sync/requirements.txt
+
+      - name: Build .exe
+        run: python -m PyInstaller kairos_win.spec --noconfirm
+
+      - name: Zip output
+        shell: pwsh
+        run: |
+          $VERSION = "${{ github.ref_name }}"
+          if (-not $VERSION) { $VERSION = "${{ inputs.version }}" }
+          Compress-Archive -Path dist\Kairos -DestinationPath "dist\Kairos-${VERSION}-windows.zip"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || inputs.version }}
+          files: dist/Kairos-*-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
