@@ -124,6 +124,7 @@ h1{font-size:20px;font-weight:700;color:#fff;margin-bottom:4px}
      border:1px solid #2a2d3a}.ghost:hover{color:#e0e0e0;border-color:#555}
 #msg{margin-top:14px;font-size:12px;min-height:18px;color:#888}
 hr{border:none;border-top:1px solid #22253a;margin:20px 0}
+@keyframes spin{to{transform:rotate(360deg)}}
 .sh{font-size:15px;font-weight:600;color:#e0e0e0;margin-bottom:6px}
 .hint{font-size:11px;color:#666;line-height:1.55;margin-bottom:12px}
 label{font-size:11px;font-weight:700;color:#777;text-transform:uppercase;
@@ -267,6 +268,62 @@ def _setup(flash: str = '', flash_type: str = '') -> str:
     </div>
   </form>
 </div>
+""")
+
+
+# ── Setup success page ───────────────────────────────────────────────────────
+
+def _setup_success() -> str:
+    return _page('Kairos — Syncing', f"""
+<div class="card">
+  <h1 style="color:#00c864">✓ Setup Complete</h1>
+  <div class="sub">Kairos Agent is configured — starting your first sync now</div>
+
+  <div id="sync-msg" class="notice" style="margin-top:20px">
+    <span id="sync-spinner" style="display:inline-block;animation:spin 1s linear infinite;margin-right:6px">⟳</span>
+    Syncing your Tiger trades… this may take 1–2 minutes on first run.
+  </div>
+
+  <div class="actions" style="margin-top:20px">
+    <a id="portal-btn" class="btn green" href="https://kairos-f3w.pages.dev"
+       style="display:none" target="_blank">Open Portal →</a>
+    <a class="btn ghost" href="/">Dashboard</a>
+  </div>
+
+  <div style="margin-top:16px;font-size:11px;color:#555">
+    You can also trigger manual syncs anytime from the tray icon.
+  </div>
+</div>
+
+<script>
+let _elapsed = 0;
+let _done    = false;
+
+async function poll() {{
+  if (_done) return;
+  try {{
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    if (d.last_sync) {{
+      _done = true;
+      const msg = document.getElementById('sync-msg');
+      msg.className   = 'ok-box';
+      msg.innerHTML   = '✓ First sync complete! Your trades are ready on the portal.';
+      document.getElementById('portal-btn').style.display = '';
+    }} else {{
+      _elapsed += 5;
+      document.getElementById('sync-msg').innerHTML =
+        '<span style="display:inline-block;animation:spin 1s linear infinite;margin-right:6px">⟳</span>' +
+        'Syncing your Tiger trades… ' + _elapsed + 's elapsed';
+      setTimeout(poll, 5000);
+    }}
+  }} catch(e) {{
+    setTimeout(poll, 5000);
+  }}
+}}
+
+setTimeout(poll, 5000);
+</script>
 """)
 
 
@@ -419,9 +476,10 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             _state['setup_done'] = True
             if _save_fn:
                 _save_fn(_state)
-            self._send(200, _setup(
-                '✓ Setup complete! You can close this tab and use the tray menu to sync.',
-                'ok'))
+            # Auto-trigger first sync in background
+            if _sync_fn:
+                _sync_fn()
+            self._send(200, _setup_success())
         else:
             self._send(200, _setup(
                 'Token saved. Please also select your tiger_openapi_config.properties file.',
