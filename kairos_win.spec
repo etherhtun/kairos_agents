@@ -1,13 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for Kairos Agent Windows
+# PyInstaller spec — Windows (x86_64)
 
-import sys
 from pathlib import Path
-
 ROOT = Path(SPECPATH)
 
 a = Analysis(
-    [str(ROOT / 'app_win.py')],
+    [str(ROOT / 'app.py')],      # same entry point as macOS
     pathex=[str(ROOT)],
     binaries=[],
     datas=[
@@ -19,21 +17,17 @@ a = Analysis(
         'PIL',
         'PIL.Image',
         'PIL.ImageDraw',
-        'plyer',
-        'plyer.platforms.win.notification',
         'tigeropen',
         'tigeropen.tiger_open_config',
         'tigeropen.trade.trade_client',
         'pandas',
         'dotenv',
-        'tkinter',
-        'tkinter.messagebox',
-        'tkinter.simpledialog',
-        'tkinter.filedialog',
+        'certifi',
     ],
     hookspath=[],
+    hooksconfig={},
     runtime_hooks=[],
-    excludes=['keyring', 'keyring.backends', 'rumps'],
+    excludes=['rumps', 'tkinter', 'truststore'],
     noarchive=False,
 )
 
@@ -49,8 +43,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,         # No console window
-    disable_windowed_traceback=False,
+    console=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,

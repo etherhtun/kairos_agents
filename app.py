@@ -1,48 +1,59 @@
 """
-Kairos Agent — macOS menubar app
-Syncs Tiger Brokers trades → Cloudflare R2 → Kairos portal.
+Kairos Agent — cross-platform system tray app
+macOS + Windows
+
+Single entry point for all platforms.
+Setup wizard and dashboard are served via local browser at http://127.0.0.1:7432
 
 Run:  python3 app.py
-Dist: pyinstaller kairos.spec
+Dist: pyinstaller kairos.spec         (macOS)
+      pyinstaller kairos_win.spec     (Windows)
 """
 
 import json
 import pathlib
 import datetime
 import threading
-import subprocess
+import webbrowser
 import sys
 import os
 
-# ── SSL fix — must run before ANY network import (PyInstaller bundles lack CA certs) ──
+# ── SSL fix — before ANY network import ───────────────────────────────────────
+# Strategy 1: truststore uses the OS native cert store (Keychain / Windows cert store).
+# Strategy 2: certifi fallback with ssl.create_default_context monkey-patch.
 try:
-    import ssl, certifi
-    _ca = certifi.where()
-    os.environ['SSL_CERT_FILE']      = _ca
-    os.environ['REQUESTS_CA_BUNDLE'] = _ca
-    # Monkey-patch ssl.create_default_context so every HTTP library picks up certifi
-    _orig_ssl_ctx = ssl.create_default_context
-    def _ssl_ctx_patch(*args, **kwargs):
-        if not any(k in kwargs for k in ('cafile', 'cadata', 'capath')):
-            kwargs['cafile'] = _ca
-        return _orig_ssl_ctx(*args, **kwargs)
-    ssl.create_default_context = _ssl_ctx_patch
+    import truststore
+    truststore.inject_into_ssl()
 except Exception:
-    pass
+    try:
+        import ssl, certifi
+        _ca = certifi.where()
+        os.environ['SSL_CERT_FILE']      = _ca
+        os.environ['REQUESTS_CA_BUNDLE'] = _ca
+        _orig_ssl = ssl.create_default_context
+        def _ssl_patch(*a, **kw):
+            if not any(k in kw for k in ('cafile', 'cadata', 'capath')):
+                kw['cafile'] = _ca
+            return _orig_ssl(*a, **kw)
+        ssl.create_default_context = _ssl_patch
+    except Exception:
+        pass
 # ─────────────────────────────────────────────────────────────────────────────
 
-import rumps
+import pystray
+from PIL import Image, ImageDraw
 
+import server
 from jobs.upload_sync import run_sync, last_data_age_hours, LOG_FILE
-from jobs.setup import run_setup
 
-STATE_FILE  = pathlib.Path.home() / '.kairos-agent' / 'state.json'
-PORTAL_URL  = 'https://kairos-f3w.pages.dev'
-AGENT_DIR   = pathlib.Path.home() / '.kairos-agent'
-
+STATE_FILE     = pathlib.Path.home() / '.kairos-agent' / 'state.json'
+PORTAL_URL     = 'https://kairos-f3w.pages.dev'
+SERVER_PORT    = 7432
 AUTO_SYNC_HOUR = 16
 AUTO_SYNC_MIN  = 30
 
+
+# ── State ─────────────────────────────────────────────────────────────────────
 
 def load_state() -> dict:
     if STATE_FILE.exists():
@@ -58,131 +69,134 @@ def save_state(s: dict) -> None:
     STATE_FILE.write_text(json.dumps(s, indent=2))
 
 
-class KairosApp(rumps.App):
-    def __init__(self):
-        super().__init__('Kairos', icon=None, quit_button=None)
-        self.state      = load_state()
-        self._sync_lock = threading.Lock()
+_state     = load_state()
+_sync_lock = threading.Lock()
 
-        self.menu = [
-            rumps.MenuItem('— Kairos Agent —'),
-            rumps.MenuItem('Last sync: …', callback=None),
-            rumps.MenuItem('Sync now',              callback=self.on_sync_now),
-            rumps.MenuItem('Auto-sync at 4:30 PM',  callback=self.on_toggle_auto),
-            None,
-            rumps.MenuItem('Open portal',  callback=self.on_open_portal),
-            rumps.MenuItem('View logs',    callback=self.on_view_logs),
-            None,
-            rumps.MenuItem('Setup / reconfigure', callback=self.on_setup),
-            None,
-            rumps.MenuItem('Quit', callback=rumps.quit_application),
-        ]
 
-        self.refresh_status()
+# ── Tray icon image ───────────────────────────────────────────────────────────
 
-        self._timer = rumps.Timer(self.tick, 60)
-        self._timer.start()
+def _make_icon(syncing: bool = False) -> Image.Image:
+    """Create a simple 64×64 tray icon — green circle with K."""
+    size  = 64
+    color = (255, 200, 0) if syncing else (0, 200, 100)
+    img   = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    draw  = ImageDraw.Draw(img)
+    draw.ellipse([4, 4, size - 4, size - 4], fill=color)
+    # Draw letter K manually (no font file dependency)
+    cx, cy = size // 2, size // 2
+    lw = 4
+    draw.rectangle([cx - 12, cy - 18, cx - 12 + lw, cy + 18], fill=(0, 0, 0))
+    draw.polygon([(cx - 8, cy), (cx + 14, cy - 18), (cx + 14, cy - 18 + lw),
+                  (cx - 8, cy + lw)], fill=(0, 0, 0))
+    draw.polygon([(cx - 8, cy), (cx + 14, cy + 18), (cx + 14, cy + 18 - lw),
+                  (cx - 8, cy - lw)], fill=(0, 0, 0))
+    return img
 
-        # First launch — run setup if not done (timer fires on main run loop)
-        if not self.state.get('setup_done'):
-            t = rumps.Timer(self._run_first_setup, 1.0)
-            t.start()
 
-    # ── First launch ─────────────────────────────────────────────────────────
+# ── Sync ──────────────────────────────────────────────────────────────────────
 
-    def _run_first_setup(self, sender):
-        sender.stop()
-        ok = run_setup()
-        if ok:
-            self.state['setup_done'] = True
-            save_state(self.state)
-            self._do_sync(reason='initial')
+def _do_sync(reason: str = 'manual') -> None:
+    if not _sync_lock.acquire(blocking=False):
+        return
+    try:
+        result = run_sync()
+        if result['ok']:
+            _state['last_sync'] = datetime.date.today().isoformat()
+            save_state(_state)
+    finally:
+        _sync_lock.release()
 
-    # ── Status ───────────────────────────────────────────────────────────────
 
-    def refresh_status(self) -> None:
-        age = last_data_age_hours()
-        if age is None:
-            label = 'Last sync: never'
-            self.title = 'Kairos ⚠'
-        elif age < 24:
-            label = f'Last sync: {age}h ago ✓'
-            self.title = 'Kairos'
-        elif age < 48:
-            label = f'Last sync: {age}h ago (stale)'
-            self.title = 'Kairos ⚠'
-        else:
-            label = f'Last sync: {int(age/24)}d ago ⚠'
-            self.title = 'Kairos ⚠'
+def _in_autosync_window() -> bool:
+    now = datetime.datetime.now()
+    if now.weekday() >= 5:
+        return False
+    return (now.hour == AUTO_SYNC_HOUR and
+            AUTO_SYNC_MIN <= now.minute < AUTO_SYNC_MIN + 5)
 
-        self.menu['Last sync: …'].title = label
-        self.menu['Auto-sync at 4:30 PM'].state = 1 if self.state.get('auto') else 0
 
-    def tick(self, _sender) -> None:
-        self.refresh_status()
-        if self.state.get('auto') and self._in_autosync_window():
+def _tick() -> None:
+    """Background thread: fires auto-sync at 4:30 PM on weekdays."""
+    while True:
+        threading.Event().wait(60)
+        if _state.get('auto') and _in_autosync_window():
             today = datetime.date.today().isoformat()
-            if self.state.get('last_sync') != today:
-                self._do_sync(reason='auto')
+            if _state.get('last_sync') != today:
+                _do_sync(reason='auto')
 
-    def _in_autosync_window(self) -> bool:
-        now = datetime.datetime.now()
-        if now.weekday() >= 5:
-            return False
-        return (now.hour == AUTO_SYNC_HOUR and
-                AUTO_SYNC_MIN <= now.minute < AUTO_SYNC_MIN + 5)
 
-    # ── Sync ─────────────────────────────────────────────────────────────────
+# ── Menu actions ──────────────────────────────────────────────────────────────
 
-    def _do_sync(self, reason: str) -> None:
-        if not self._sync_lock.acquire(blocking=False):
-            return
-        self.menu['Sync now'].title = 'Syncing… (please wait)'
-        self.title = 'Kairos ⟳'
+def _open_dashboard(_icon=None, _item=None):
+    webbrowser.open(f'http://127.0.0.1:{SERVER_PORT}/')
 
-        def worker():
-            try:
-                result = run_sync()
-                if result['ok']:
-                    self.state['last_sync'] = datetime.date.today().isoformat()
-                    save_state(self.state)
-                    rumps.notification(
-                        title='Kairos',
-                        subtitle=f'✓ Sync complete ({result["duration_s"]}s)',
-                        message='Portal updated',
-                    )
-                else:
-                    rumps.notification(
-                        title='Kairos',
-                        subtitle=f'✗ Sync failed ({result["step"]})',
-                        message='Check logs for details',
-                    )
-            finally:
-                self.menu['Sync now'].title = 'Sync now'
-                self.refresh_status()
-                self._sync_lock.release()
 
-        threading.Thread(target=worker, daemon=True).start()
+def _sync_now(_icon=None, _item=None):
+    threading.Thread(target=_do_sync, kwargs={'reason': 'manual'}, daemon=True).start()
 
-    # ── Menu callbacks ────────────────────────────────────────────────────────
 
-    def on_sync_now(self, _sender) -> None:
-        self._do_sync(reason='manual')
+def _toggle_auto(_icon=None, _item=None):
+    _state['auto'] = not _state.get('auto', True)
+    save_state(_state)
 
-    def on_toggle_auto(self, sender) -> None:
-        self.state['auto'] = not self.state.get('auto', True)
-        save_state(self.state)
-        sender.state = 1 if self.state['auto'] else 0
 
-    def on_open_portal(self, _sender) -> None:
-        subprocess.run(['open', PORTAL_URL])
+def _open_portal(_icon=None, _item=None):
+    webbrowser.open(PORTAL_URL)
 
-    def on_view_logs(self, _sender) -> None:
-        subprocess.run(['open', str(LOG_FILE)])
 
-    def on_setup(self, _sender) -> None:
-        run_setup()
+def _open_setup(_icon=None, _item=None):
+    webbrowser.open(f'http://127.0.0.1:{SERVER_PORT}/setup')
+
+
+def _quit(icon, _item=None):
+    icon.stop()
+
+
+def _build_menu():
+    return pystray.Menu(
+        pystray.MenuItem('Kairos Agent', None, enabled=False),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem('Open Dashboard', _open_dashboard, default=True),
+        pystray.MenuItem('Sync Now',       _sync_now),
+        pystray.MenuItem(
+            'Auto-sync at 4:30 PM',
+            _toggle_auto,
+            checked=lambda item: _state.get('auto', True),
+        ),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem('Open Portal',         _open_portal),
+        pystray.MenuItem('Setup / Reconfigure', _open_setup),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem('Quit', _quit),
+    )
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    # Start web dashboard in background thread
+    server.start(
+        port      = SERVER_PORT,
+        state     = _state,
+        save_fn   = save_state,
+        sync_fn   = lambda: threading.Thread(
+            target=_do_sync, kwargs={'reason': 'manual'}, daemon=True
+        ).start(),
+        log_file  = LOG_FILE,
+    )
+
+    # Auto-sync tick
+    threading.Thread(target=_tick, daemon=True).start()
+
+    # First launch → open setup page in browser after 1.5s
+    if not _state.get('setup_done'):
+        threading.Timer(
+            1.5, lambda: webbrowser.open(f'http://127.0.0.1:{SERVER_PORT}/setup')
+        ).start()
+
+    icon = pystray.Icon('kairos', _make_icon(), 'Kairos Agent', _build_menu())
+    icon.run()
 
 
 if __name__ == '__main__':
-    KairosApp().run()
+    main()
