@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps (cached layer)
-COPY requirements_docker.txt sync/requirements.txt /app/
+COPY requirements_docker.txt /app/requirements_docker.txt
+COPY sync/requirements.txt /app/sync/requirements.txt
 RUN pip install --no-cache-dir \
     -r requirements_docker.txt \
     -r sync/requirements.txt
