@@ -41,7 +41,7 @@ CSRF_TOKEN = secrets.token_hex(32)
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def start(port: int, state: dict, save_fn, sync_fn, log_file):
+def start(port: int, state: dict, save_fn, sync_fn, log_file, host: str = '127.0.0.1'):
     global _PORT, _state, _save_fn, _sync_fn, _log_file
     _PORT     = port
     _state    = state
@@ -49,7 +49,7 @@ def start(port: int, state: dict, save_fn, sync_fn, log_file):
     _sync_fn  = sync_fn
     _log_file = log_file
 
-    srv = socketserver.ThreadingTCPServer(('127.0.0.1', port), _Handler)
+    srv = socketserver.ThreadingTCPServer((host, port), _Handler)
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
 

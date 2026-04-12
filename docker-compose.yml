@@ -1,0 +1,12 @@
+services:
+  kairos-agent:
+    image: ghcr.io/etherhtun/kairos-agent:latest
+    container_name: kairos-agent
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7432:7432"   # dashboard only reachable from this machine
+    volumes:
+      - ~/.kairos-agent:/root/.kairos-agent
+    environment:
+      - AUTO_SYNC_HOUR=16       # sync at 4:30 PM weekdays
+      - AUTO_SYNC_MIN=30
