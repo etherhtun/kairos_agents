@@ -1,9 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for Kairos Agent macOS app (Universal Binary)
+# PyInstaller spec — macOS (arm64; runs on Intel via Rosetta 2)
 
-import sys
 from pathlib import Path
-
 ROOT = Path(SPECPATH)
 
 a = Analysis(
@@ -11,22 +9,26 @@ a = Analysis(
     pathex=[str(ROOT)],
     binaries=[],
     datas=[
-        # Bundle the sync code so it can be copied to ~/.kairos-agent/sync/
         (str(ROOT / 'sync'), 'sync'),
     ],
     hiddenimports=[
-        'rumps',
+        'pystray',
+        'pystray._darwin',
+        'PIL',
+        'PIL.Image',
+        'PIL.ImageDraw',
         'tigeropen',
         'tigeropen.tiger_open_config',
         'tigeropen.trade.trade_client',
         'pandas',
         'dotenv',
         'certifi',
+        'truststore',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['keyring', 'keyring.backends', 'keyring.backends.macOS'],
+    excludes=['rumps', 'tkinter'],
     noarchive=False,
 )
 
@@ -43,9 +45,8 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=True,
-    target_arch=None,  # Native arch per build job
+    argv_emulation=False,
+    target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
 )
@@ -66,8 +67,8 @@ app = BUNDLE(
     icon=None,
     bundle_identifier='dev.kairos.agent',
     info_plist={
-        'LSUIElement': True,           # Hide from Dock (menubar only)
+        'LSUIElement': True,            # menu bar only — hide from Dock
         'NSHighResolutionCapable': True,
-        'CFBundleShortVersionString': '1.3.0',
+        'CFBundleShortVersionString': '2.0.0',
     },
 )
