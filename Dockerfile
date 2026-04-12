@@ -5,6 +5,10 @@ WORKDIR /app
 # Install system deps for pandas/tigeropen
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
+    libssl-dev \
+    libffi-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps (cached layer)
