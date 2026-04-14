@@ -130,11 +130,16 @@ class MooMooBroker(BrokerBase):
                 return AccountSummary(broker=self.name,
                                       account_id=str(self._acc_id))
             row = data.iloc[0]
+            # total_assets is in account base currency (often HKD for SG accounts)
+            # usd_assets is the USD-denominated net value — use it when available
+            usd_assets = row.get('usd_assets', 0)
+            net_value  = float(usd_assets or 0) if usd_assets not in (None, 'N/A', '') \
+                         else float(row.get('total_assets', 0) or 0)
             return AccountSummary(
                 broker=self.name,
                 account_id=str(self._acc_id),
-                net_value=float(row.get('total_assets', 0) or 0),
-                cash=float(row.get('cash', 0) or 0),
+                net_value=net_value,
+                cash=float(row.get('us_cash', 0) or 0),
                 currency='USD',
             )
         except Exception as e:
