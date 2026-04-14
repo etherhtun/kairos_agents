@@ -267,6 +267,9 @@ def run():
 
         except Exception as e:
             print(f'  ❌ {broker.name} error: {e}')
+        finally:
+            if hasattr(broker, 'close'):
+                broker.close()
 
     # Classify new trades
     print(f'\n▶ Classifying new trades...')

@@ -69,6 +69,65 @@ def _trade_date(timestamp: str) -> str:
     return str(timestamp)[:10] if timestamp else ''
 
 
+def _calc_pnl(rows: list) -> dict:
+    """
+    Calculate realized P&L by matching SELL_SHORT ↔ BUY_BACK (options)
+    and BUY ↔ SELL (stocks) per code using FIFO.
+    Returns dict: order_id → realized_pnl
+    """
+    from collections import defaultdict
+
+    pnl_map   = {}
+    opt_opens = defaultdict(list)   # code → [(order_id, price, qty)]
+    stk_opens = defaultdict(list)   # code → [(order_id, price, qty)]
+
+    # Sort chronologically so FIFO matching is correct
+    sorted_rows = sorted(rows, key=lambda r: str(r.get('create_time', '')))
+
+    for row in sorted_rows:
+        code     = str(row.get('code', ''))
+        trd_side = str(row.get('trd_side', ''))
+        qty      = float(row.get('dealt_qty', 0) or row.get('qty', 0) or 0)
+        price    = float(row.get('dealt_avg_price', 0) or 0)
+        oid      = str(row.get('order_id', ''))
+        is_opt   = bool(_OPT_RE.match(code))
+
+        pnl_map[oid] = 0.0  # default
+
+        if is_opt:
+            if trd_side == 'SELL_SHORT':
+                opt_opens[code].append([oid, price, qty])
+            elif trd_side == 'BUY_BACK':
+                remaining = qty
+                total_pnl = 0.0
+                while remaining > 0 and opt_opens[code]:
+                    sell_oid, sell_price, sell_qty = opt_opens[code][0]
+                    matched = min(remaining, sell_qty)
+                    total_pnl += (sell_price - price) * matched * 100
+                    remaining -= matched
+                    opt_opens[code][0][2] -= matched
+                    if opt_opens[code][0][2] <= 0:
+                        opt_opens[code].pop(0)
+                pnl_map[oid] = round(total_pnl, 2)
+        else:
+            if trd_side == 'BUY':
+                stk_opens[code].append([oid, price, qty])
+            elif trd_side == 'SELL':
+                remaining = qty
+                total_pnl = 0.0
+                while remaining > 0 and stk_opens[code]:
+                    buy_oid, buy_price, buy_qty = stk_opens[code][0]
+                    matched = min(remaining, buy_qty)
+                    total_pnl += (price - buy_price) * matched
+                    remaining -= matched
+                    stk_opens[code][0][2] -= matched
+                    if stk_opens[code][0][2] <= 0:
+                        stk_opens[code].pop(0)
+                pnl_map[oid] = round(total_pnl, 2)
+
+    return pnl_map
+
+
 # ── Broker ────────────────────────────────────────────────────────────────────
 
 class MooMooBroker(BrokerBase):
@@ -117,6 +176,12 @@ class MooMooBroker(BrokerBase):
 
         print(f'  [{self.name}] No real account found — skipping')
         return False
+
+    def close(self):
+        if self._ctx:
+            try: self._ctx.close()
+            except Exception: pass
+            self._ctx = None
 
     # ── Account ──────────────────────────────────────────────────────────────
 
@@ -230,6 +295,10 @@ class MooMooBroker(BrokerBase):
 
             print(f'  [{self.name}] {len(data)} filled orders fetched')
 
+            # Calculate realized P&L by matching open/close pairs
+            rows_list = data.to_dict('records')
+            pnl_map   = _calc_pnl(rows_list)
+
             # Map Moomoo trade sides → standard action
             _ACTION = {
                 'BUY': 'BUY', 'SELL': 'SELL',
@@ -261,7 +330,7 @@ class MooMooBroker(BrokerBase):
                         action      = action,
                         quantity    = qty,
                         avg_price   = avg_price,
-                        realized_pnl = 0.0,
+                        realized_pnl = pnl_map.get(order_id, 0.0),
                         strategy    = parsed['strategy'],
                         option_type = parsed['option_type'],
                         strike      = parsed['strike'],
@@ -278,7 +347,7 @@ class MooMooBroker(BrokerBase):
                         action      = action,
                         quantity    = qty,
                         avg_price   = avg_price,
-                        realized_pnl = 0.0,
+                        realized_pnl = pnl_map.get(order_id, 0.0),
                         strategy    = 'long_stock' if action == 'BUY' else 'short_stock',
                     ))
 
