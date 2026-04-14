@@ -1,4 +1,5 @@
 tigeropen
+moomoo-api
 pandas
 python-dotenv
 certifi
