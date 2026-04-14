@@ -49,41 +49,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── macOS Intel (x86_64) ──────────────────────────────────────────────────
-  build-mac-intel:
-    runs-on: macos-12
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install pyinstaller pystray pillow certifi "truststore; python_version>='3.10'"
-          pip install -r sync/requirements.txt
-
-      - name: Build .app
-        run: python -m PyInstaller kairos.spec --noconfirm
-
-      - name: Create DMG
-        run: |
-          VERSION="${{ github.ref_name || inputs.version }}"
-          hdiutil create \
-            -volname "Kairos Agent" \
-            -srcfolder dist/Kairos.app \
-            -ov -format UDZO \
-            "dist/Kairos-${VERSION}-mac-intel.dmg"
-
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name || inputs.version }}
-          files: dist/Kairos-*-mac-intel.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   # ── Docker (linux/amd64 + linux/arm64) ────────────────────────────────────
   build-docker:
     runs-on: ubuntu-latest
