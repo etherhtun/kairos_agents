@@ -24,6 +24,9 @@ COPY . .
 # Credentials and state live here (mount from host)
 VOLUME ["/root/.kairos-agent"]
 
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+
 EXPOSE 7432
 
 CMD ["python3", "app_docker.py"]

@@ -77,6 +77,8 @@ jobs:
           tags: |
             ghcr.io/etherhtun/kairos-agent:latest
             ghcr.io/etherhtun/kairos-agent:${{ github.ref_name || inputs.version }}
+          build-args: |
+            APP_VERSION=${{ github.ref_name || inputs.version }}
 
   # ── Windows (x86_64) ───────────────────────────────────────────────────────
   build-win:
