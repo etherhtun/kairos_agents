@@ -49,7 +49,7 @@ def _parse_option_code(code: str) -> dict:
     symbol, date_str, opt_type, strike_raw = m.groups()
     expiry   = f"20{date_str[:2]}-{date_str[2:4]}-{date_str[4:]}"
     strike   = int(strike_raw) / 1000.0
-    strategy = 'bps' if opt_type == 'P' else 'bcs'
+    strategy = ''  # determined by classifier from position structure
     contract = f"{opt_type} {strike:.2f} {expiry}"
 
     return {

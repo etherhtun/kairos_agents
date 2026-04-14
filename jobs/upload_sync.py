@@ -49,7 +49,7 @@ def _bundled_sync_dir() -> pathlib.Path:
     return pathlib.Path(__file__).resolve().parent.parent / 'sync'
 
 
-BUNDLE_VERSION = '1.9'  # bump this when sync code changes
+BUNDLE_VERSION = '2.0'  # bump this when sync code changes
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""

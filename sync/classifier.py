@@ -8,7 +8,7 @@ from typing import List
 from brokers.base import Trade, Position
 
 
-STRATEGIES_OPT = ['iron_condor', 'bps', 'bcs']
+STRATEGIES_OPT = ['iron_condor', 'bps', 'bcs', 'csp', 'cc']
 
 
 def classify_trades(trades: List[Trade]) -> List[Trade]:
@@ -73,6 +73,10 @@ def group_positions(positions: List[Position]) -> List[dict]:
             strikes = f"P {puts[0].strike:.0f}/{puts[-1].strike:.0f}" if len(puts) >= 2 else '—'
         elif strategy == 'bcs':
             strikes = f"C {calls[0].strike:.0f}/{calls[-1].strike:.0f}" if len(calls) >= 2 else '—'
+        elif strategy == 'csp':
+            strikes = f"P {puts[0].strike:.0f}" if puts else '—'
+        elif strategy == 'cc':
+            strikes = f"C {calls[0].strike:.0f}" if calls else '—'
         else:
             all_strikes = sorted(set(p.strike for p in group))
             strikes = '/'.join(f"{s:.0f}" for s in all_strikes)
@@ -106,7 +110,10 @@ def group_positions(positions: List[Position]) -> List[dict]:
         max_profit = round(entry_credit, 2)
 
         # Spread width (worst case max loss per contract × contracts)
-        if strategy in ('bps', 'bcs') and len(group) >= 2:
+        if strategy in ('csp', 'cc'):
+            # Single-leg: max loss not capped — leave as 0
+            max_loss = 0.0
+        elif strategy in ('bps', 'bcs') and len(group) >= 2:
             all_strikes_list = sorted(set(p.strike for p in group))
             spread_width_pts = all_strikes_list[-1] - all_strikes_list[0]
             width_dollars    = spread_width_pts * 100 * contracts
@@ -174,15 +181,26 @@ def group_positions(positions: List[Position]) -> List[dict]:
 def _classify_opt_group(trades: list) -> str:
     has_call = any(t.option_type == 'C' for t in trades)
     has_put  = any(t.option_type == 'P' for t in trades)
+    sells    = [t for t in trades if t.action == 'SELL']
+    buys     = [t for t in trades if t.action == 'BUY']
     if has_call and has_put: return 'iron_condor'
-    if has_put:              return 'bps'
-    if has_call:             return 'bcs'
+    # Single-leg: only sells (no hedge leg)
+    if len(trades) == 1:
+        t = trades[0]
+        if t.action == 'SELL':
+            return 'csp' if t.option_type == 'P' else 'cc'
+    if has_put:  return 'bps'
+    if has_call: return 'bcs'
     return 'unknown'
 
 def _classify_opt_group_pos(positions: list) -> str:
-    has_call = any(p.option_type == 'C' for p in positions)
-    has_put  = any(p.option_type == 'P' for p in positions)
+    has_call  = any(p.option_type == 'C' for p in positions)
+    has_put   = any(p.option_type == 'P' for p in positions)
+    short_pos = [p for p in positions if p.quantity < 0]
     if has_call and has_put: return 'iron_condor'
-    if has_put:              return 'bps'
-    if has_call:             return 'bcs'
+    # Single short leg = CSP or CC
+    if len(positions) == 1 and positions[0].quantity < 0:
+        return 'csp' if positions[0].option_type == 'P' else 'cc'
+    if has_put:  return 'bps'
+    if has_call: return 'bcs'
     return 'unknown'
