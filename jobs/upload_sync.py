@@ -99,8 +99,14 @@ def run_sync(timeout: int = 300) -> dict:
             sys.path.insert(0, sync_dir)
 
         try:
-            import sync as sync_mod
             import importlib
+
+            # Clear cached broker/sync modules so updated code is re-imported
+            for _key in list(sys.modules.keys()):
+                if _key.startswith(('brokers', 'classifier')) or _key in ('sync',):
+                    del sys.modules[_key]
+
+            import sync as sync_mod
             importlib.reload(sync_mod)  # fresh state each run
 
             # Override output paths to ~/.kairos-agent/
