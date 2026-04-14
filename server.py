@@ -164,15 +164,17 @@ def _dashboard() -> str:
     else:
         dot, sync_txt = 'bad',  f'{int(age/24)}d ago'
 
-    auto_txt    = 'On' if _state.get('auto', True) else 'Off'
-    setup_done  = _state.get('setup_done', False)
-    setup_dot   = 'ok' if setup_done else 'bad'
-    setup_txt   = 'Complete' if setup_done else 'Not configured'
+    auto_txt   = 'On' if _state.get('auto', True) else 'Off'
+    setup_done = _state.get('setup_done', False)
+    setup_dot  = 'ok' if setup_done else 'bad'
+    setup_txt  = 'Complete' if setup_done else 'Not configured'
+    app_ver    = os.environ.get('APP_VERSION', '')
+    ver_label  = f'v{app_ver}' if app_ver else 'Kairos Agent'
 
     return _page('Kairos Agent', f"""
-<div class="card">
+<div class="card" style="width:500px;max-width:96vw">
   <h1>Kairos Agent</h1>
-  <div class="sub">Local sync dashboard &nbsp;·&nbsp; v2.0</div>
+  <div class="sub">Local sync dashboard &nbsp;·&nbsp; {html.escape(ver_label)}</div>
 
   <div class="row">
     <div class="dot {dot}"></div>
@@ -191,25 +193,73 @@ def _dashboard() -> str:
   </div>
 
   <div class="actions">
-    <button class="btn green" onclick="syncNow(this)">Sync Now</button>
+    <button class="btn green" id="sync-btn" onclick="syncNow(this)">Sync Now</button>
     <a class="btn ghost" href="/setup">Setup / Reconfigure</a>
     <a class="btn ghost" href="https://kairos-f3w.pages.dev" target="_blank">Portal ↗</a>
   </div>
   <div id="msg"></div>
+
+  <hr style="border:none;border-top:1px solid #22253a;margin:20px 0 14px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <div style="font-size:13px;font-weight:600;color:#e0e0e0">Sync log</div>
+    <button onclick="loadLog()" style="background:none;border:none;color:#666;font-size:11px;cursor:pointer;padding:0;transition:color .15s" onmouseover="this.style.color='#e0e0e0'" onmouseout="this.style.color='#666'">↺ refresh</button>
+  </div>
+  <div id="log-box" style="background:#0a0c10;border:1px solid #1e2130;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:10.5px;color:#7ee787;line-height:1.75;max-height:320px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">Loading…</div>
 </div>
 
 <script>
 const CSRF = '{CSRF_TOKEN}';
+let _polling = null;
+
+async function loadLog() {{
+  try {{
+    const r = await fetch('/api/logs');
+    const d = await r.json();
+    const lines = d.lines || [];
+    // Find start of last run
+    let start = 0;
+    for (let i = lines.length - 1; i >= 0; i--) {{
+      if (lines[i].includes('RUN @') || lines[i].includes('=====')) {{
+        // Go back a bit to include the separator
+        start = Math.max(0, i - 1);
+        break;
+      }}
+    }}
+    const box = document.getElementById('log-box');
+    const text = lines.slice(start).join('\\n').trim();
+    box.textContent = text || 'No sync log yet. Click Sync Now to run your first sync.';
+    box.scrollTop = box.scrollHeight;
+    return text;
+  }} catch(e) {{
+    document.getElementById('log-box').textContent = 'Failed to load log.';
+    return '';
+  }}
+}}
+
+function _startPoll() {{
+  if (_polling) return;
+  _polling = setInterval(async () => {{
+    const text = await loadLog();
+    if (text.includes('Uploaded:') || text.includes('sync failed')) {{
+      clearInterval(_polling);
+      _polling = null;
+      setTimeout(() => location.reload(), 1200);
+    }}
+  }}, 2500);
+}}
+
 function syncNow(btn) {{
   btn.disabled = true; btn.textContent = 'Syncing…';
   document.getElementById('msg').textContent = '';
   fetch('/api/sync', {{method:'POST',headers:{{'X-CSRF-Token':CSRF}}}})
-    .then(r=>r.json()).then(d=>{{
+    .then(r => r.json()).then(d => {{
       document.getElementById('msg').textContent = d.message || '';
-      btn.disabled = false; btn.textContent = 'Sync Now';
-      if (d.ok) setTimeout(()=>location.reload(), 1500);
-    }}).catch(()=>{{btn.disabled=false;btn.textContent='Sync Now';}});
+      if (d.ok) _startPoll();
+      else {{ btn.disabled = false; btn.textContent = 'Sync Now'; }}
+    }}).catch(() => {{ btn.disabled = false; btn.textContent = 'Sync Now'; }});
 }}
+
+loadLog();
 </script>
 """)
 
