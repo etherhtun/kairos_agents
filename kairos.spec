@@ -2,6 +2,7 @@
 # PyInstaller spec — macOS (arm64; runs on Intel via Rosetta 2)
 
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files
 ROOT = Path(SPECPATH)
 
 a = Analysis(
@@ -10,6 +11,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (str(ROOT / 'sync'), 'sync'),
+        *collect_data_files('moomoo'),
     ],
     hiddenimports=[
         'pystray',
