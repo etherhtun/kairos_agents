@@ -207,12 +207,19 @@ class TigerBroker(BrokerBase):
 
     def get_account(self) -> AccountSummary:
         try:
-            f = vars(self._client.get_prime_assets())
+            f        = vars(self._client.get_prime_assets())
+            segments = f.get('_segments', {})
+            # Prefer segment 'F' (combined/full view); fall back to any segment
+            seg = segments.get('F') or segments.get('S') or (
+                next(iter(segments.values())) if segments else None
+            )
+            net_value = float(getattr(seg, 'net_liquidation', 0) or 0) if seg else 0.0
+            cash      = float(getattr(seg, 'cash_available_for_trade', 0) or 0) if seg else 0.0
             return AccountSummary(
-                broker=self.name, account_id=str(f.get('account','')),
-                net_value=float(f.get('net_value',0) or 0),
-                cash=float(f.get('cash',0) or 0),
-                currency=str(f.get('currency','USD') or 'USD'),
+                broker=self.name, account_id=str(f.get('account', '')),
+                net_value=net_value,
+                cash=cash,
+                currency='USD',
             )
         except Exception as e:
             print(f'  [{self.name}] ⚠️  get_account: {e}')
