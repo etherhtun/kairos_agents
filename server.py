@@ -23,10 +23,12 @@ import secrets
 import socketserver
 import stat
 import threading
+import urllib.error
 import urllib.parse
+import urllib.request
 
 from jobs import creds
-from jobs.upload_sync import last_data_age_hours
+from jobs.upload_sync import last_data_age_hours, UPLOAD_URL, DATA_FILE
 
 # ── Module-level state (set by start()) ──────────────────────────────────────
 _PORT      = 7432
@@ -194,6 +196,7 @@ def _dashboard() -> str:
 
   <div class="actions">
     <button class="btn green" id="sync-btn" onclick="syncNow(this)">Sync Now</button>
+    <button class="btn ghost" id="reset-btn" onclick="resetData(this)" style="color:#e74c3c;border-color:#5a0000" title="Delete local data and re-sync full history">Reset &amp; Resync</button>
     <a class="btn ghost" href="/setup">Setup / Reconfigure</a>
     <a class="btn ghost" href="https://kairos-f3w.pages.dev" target="_blank">Portal ↗</a>
   </div>
@@ -257,6 +260,18 @@ function syncNow(btn) {{
       if (d.ok) _startPoll();
       else {{ btn.disabled = false; btn.textContent = 'Sync Now'; }}
     }}).catch(() => {{ btn.disabled = false; btn.textContent = 'Sync Now'; }});
+}}
+
+function resetData(btn) {{
+  if (!confirm('This will delete all local data and re-sync full history from scratch.\\n\\nPortal will be cleared immediately. Continue?')) return;
+  btn.disabled = true; btn.textContent = 'Resetting…';
+  document.getElementById('msg').textContent = '';
+  fetch('/api/reset', {{method:'POST',headers:{{'X-CSRF-Token':CSRF}}}})
+    .then(r => r.json()).then(d => {{
+      document.getElementById('msg').textContent = d.message || '';
+      if (d.ok) {{ _startPoll(); document.getElementById('sync-btn').disabled = true; document.getElementById('sync-btn').textContent = 'Syncing…'; }}
+      else {{ btn.disabled = false; btn.textContent = 'Reset & Resync'; }}
+    }}).catch(() => {{ btn.disabled = false; btn.textContent = 'Reset & Resync'; }});
 }}
 
 loadLog();
@@ -446,6 +461,44 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             if _sync_fn:
                 _sync_fn()
             self._json(200, {'ok': True, 'message': 'Sync started…'})
+
+        elif path == '/api/reset':
+            if not _csrf_ok_header(self.headers):
+                self._json(403, {'ok': False, 'message': 'CSRF check failed'})
+                return
+            try:
+                # 1. Delete local data.json so next sync does full history
+                if DATA_FILE.exists():
+                    DATA_FILE.unlink()
+
+                # 2. Upload empty data structure to clear the portal immediately
+                token = creds.get('upload_token')
+                if token:
+                    empty = json.dumps({
+                        'trades': [], 'positions': [], 'accounts': [],
+                        'summary': {}, 'generated_at': datetime.datetime.now().isoformat(),
+                    }).encode()
+                    req = urllib.request.Request(
+                        UPLOAD_URL, data=empty,
+                        headers={
+                            'Authorization': f'Bearer {token}',
+                            'Content-Type': 'application/json',
+                            'User-Agent': 'kairos-agent/reset',
+                        },
+                        method='POST',
+                    )
+                    try:
+                        with urllib.request.urlopen(req, timeout=15):
+                            pass
+                    except Exception:
+                        pass  # portal clear failed — sync will overwrite anyway
+
+                # 3. Trigger full resync
+                if _sync_fn:
+                    _sync_fn()
+                self._json(200, {'ok': True, 'message': 'Data cleared — full resync started…'})
+            except Exception as e:
+                self._json(500, {'ok': False, 'message': f'Reset failed: {e}'})
 
         elif path == '/api/setup':
             self._handle_setup()
