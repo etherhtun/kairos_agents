@@ -467,9 +467,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 self._json(403, {'ok': False, 'message': 'CSRF check failed'})
                 return
             try:
-                # 1. Delete local data.json so next sync does full history
+                # 1. Delete local data.json and leg cache so next sync
+                #    does a true full history fetch with no cached shortcuts
                 if DATA_FILE.exists():
                     DATA_FILE.unlink()
+                leg_cache = DATA_FILE.parent / 'sync' / 'leg_cache.json'
+                if leg_cache.exists():
+                    leg_cache.unlink()
 
                 # 2. Upload empty data structure to clear the portal immediately
                 token = creds.get('upload_token')
