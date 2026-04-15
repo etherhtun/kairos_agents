@@ -36,9 +36,6 @@ def classify_trades(trades: List[Trade]) -> List[Trade]:
         for t in group:
             t.strategy = strat
 
-    # Merge already-classified back in
-    for t in already_done:
-        pass  # strategy already set
     return trades
 
 
@@ -181,8 +178,6 @@ def group_positions(positions: List[Position]) -> List[dict]:
 def _classify_opt_group(trades: list) -> str:
     has_call = any(t.option_type == 'C' for t in trades)
     has_put  = any(t.option_type == 'P' for t in trades)
-    sells    = [t for t in trades if t.action == 'SELL']
-    buys     = [t for t in trades if t.action == 'BUY']
     if has_call and has_put: return 'iron_condor'
     # Single-leg: only sells (no hedge leg)
     if len(trades) == 1:
@@ -194,9 +189,8 @@ def _classify_opt_group(trades: list) -> str:
     return 'unknown'
 
 def _classify_opt_group_pos(positions: list) -> str:
-    has_call  = any(p.option_type == 'C' for p in positions)
-    has_put   = any(p.option_type == 'P' for p in positions)
-    short_pos = [p for p in positions if p.quantity < 0]
+    has_call = any(p.option_type == 'C' for p in positions)
+    has_put  = any(p.option_type == 'P' for p in positions)
     if has_call and has_put: return 'iron_condor'
     # Single short leg = CSP or CC
     if len(positions) == 1 and positions[0].quantity < 0:

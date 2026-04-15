@@ -1,5 +1,5 @@
-tigeropen
-moomoo-api
-pandas
-python-dotenv
-certifi
+tigeropen>=3.5.7
+moomoo-api>=4.0.0
+pandas>=2.3.3
+python-dotenv>=1.1.0
+certifi>=2025.4.26

@@ -15,25 +15,7 @@ import pathlib
 import threading
 import time
 
-# ── SSL fix ───────────────────────────────────────────────────────────────────
-try:
-    import truststore
-    truststore.inject_into_ssl()
-except Exception:
-    try:
-        import ssl, certifi
-        _ca = certifi.where()
-        os.environ['SSL_CERT_FILE']      = _ca
-        os.environ['REQUESTS_CA_BUNDLE'] = _ca
-        _orig = ssl.create_default_context
-        def _p(*a, **kw):
-            if not any(k in kw for k in ('cafile', 'cadata', 'capath')):
-                kw['cafile'] = _ca
-            return _orig(*a, **kw)
-        ssl.create_default_context = _p
-    except Exception:
-        pass
-# ─────────────────────────────────────────────────────────────────────────────
+import ssl_patch; ssl_patch.apply()
 
 import server
 from jobs.upload_sync import run_sync, LOG_FILE

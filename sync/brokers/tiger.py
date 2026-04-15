@@ -111,8 +111,8 @@ def _load_cache() -> dict:
                 data = json.load(f)
             print(f'    [cache] Loaded {len(data)} cached leg records')
             return data
-        except:
-            pass
+        except Exception as e:
+            print(f'[tiger] warning: {e}')
     return {}
 
 def _save_cache(cache: dict):
