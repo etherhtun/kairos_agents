@@ -35,11 +35,15 @@ jobs:
       - name: Create DMG
         run: |
           VERSION="${{ github.ref_name || inputs.version }}"
-          hdiutil create \
-            -volname "Kairos Agent" \
-            -srcfolder dist/Kairos.app \
-            -ov -format UDZO \
-            "dist/Kairos-${VERSION}-mac.dmg"
+          for attempt in 1 2 3; do
+            hdiutil create \
+              -volname "Kairos Agent" \
+              -srcfolder dist/Kairos.app \
+              -ov -format UDZO \
+              "dist/Kairos-${VERSION}-mac.dmg" && break
+            echo "hdiutil attempt $attempt failed, retrying in 5s..."
+            sleep 5
+          done
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
