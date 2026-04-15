@@ -23,6 +23,13 @@ a = Analysis(
         'pandas',
         'dotenv',
         'certifi',
+        # Moomoo — imported inside try/except so PyInstaller misses it
+        'moomoo',
+        'moomoo.common',
+        'moomoo.trade',
+        'moomoo.quote',
+        # ssl_patch utility
+        'ssl_patch',
     ],
     hookspath=[],
     hooksconfig={},
