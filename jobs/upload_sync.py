@@ -38,7 +38,8 @@ def _bundled_sync_dir() -> pathlib.Path:
 # This forces re-extraction of the bundled sync code to ~/.kairos-agent/sync/
 # on the next run, even if the app version hasn't changed.
 # History: 1.0 (initial), 2.0 (CSP/CC + module cache fix), 2.1 (Tiger net value + INCREMENTAL_DAYS=90)
-BUNDLE_VERSION = '2.1'
+#          2.2 (remove SSL block from tiger.py, add TigerBroker.close(), fix bare except)
+BUNDLE_VERSION = '2.2'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""
