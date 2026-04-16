@@ -29,4 +29,7 @@ ENV APP_VERSION=${APP_VERSION}
 
 EXPOSE 7432
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:7432/api/status')" || exit 1
+
 CMD ["python3", "app_docker.py"]
