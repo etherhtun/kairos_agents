@@ -36,7 +36,7 @@ OUTPUT_FILE  = Path(__file__).parent.parent / 'data.json'
 BACKUP_FILE  = Path(__file__).parent.parent / 'data.backup.json'
 
 # Incremental: only fetch last N days from broker, merge with existing history
-INCREMENTAL_DAYS = 30
+INCREMENTAL_DAYS = 90
 FULL_HISTORY_YEARS = 3
 
 END_DATE = datetime.now().strftime('%Y-%m-%d')

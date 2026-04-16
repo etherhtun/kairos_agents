@@ -9,30 +9,13 @@ Optimisations:
   - Batched get_order() calls (10 per batch, 8s pause)
 """
 
-import base64, json, os, subprocess, warnings, time, ssl
+import base64, json, os, subprocess, warnings, time
 from datetime import datetime
 from pathlib import Path
 from typing import List
 
 import pandas as pd
 warnings.filterwarnings('ignore')
-
-# Fix SSL certificate verification in PyInstaller bundles
-# (bundled Python doesn't have access to macOS system certs)
-try:
-    import certifi
-    _ca = certifi.where()
-    os.environ.setdefault('SSL_CERT_FILE', _ca)
-    os.environ.setdefault('REQUESTS_CA_BUNDLE', _ca)
-    # Patch ssl.create_default_context in case env vars were set too late
-    _orig_ssl = ssl.create_default_context
-    def _ssl_patch(*args, **kwargs):
-        if not any(k in kwargs for k in ('cafile', 'cadata', 'capath')):
-            kwargs['cafile'] = _ca
-        return _orig_ssl(*args, **kwargs)
-    ssl.create_default_context = _ssl_patch
-except Exception:
-    pass
 
 from .base import BrokerBase, Position, Trade, AccountSummary
 
