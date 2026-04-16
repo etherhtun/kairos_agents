@@ -28,10 +28,11 @@ class Trade:
     asset_type: str   # 'OPT' | 'STK'
     action: str; quantity: float; avg_price: float
     realized_pnl: float
-    strategy: str   = ''
+    strategy: str    = ''
     option_type: str = ''
-    strike: float   = 0.0
-    expiry: str     = ''
+    strike: float    = 0.0
+    expiry: str      = ''
+    entry_time: str  = ''   # UTC ISO — used for ±2h signal matching
 
 
 @dataclass

@@ -43,6 +43,11 @@ def _ts_to_sgt_date(ts) -> str:
               .tz_convert('Asia/Singapore')
               .strftime('%Y-%m-%d'))
 
+def _ts_to_utc_iso(ts) -> str:
+    """Full UTC ISO timestamp — used for ±2h signal matching."""
+    return (pd.to_datetime(int(ts), unit='ms', utc=True)
+              .strftime('%Y-%m-%dT%H:%M:%SZ'))
+
 def _classify_legs(legs: list) -> dict:
     puts  = sorted([l for l in legs if str(l.get('put_call','')).upper() == 'PUT'],
                    key=lambda x: float(x.get('strike', 0)))
@@ -369,7 +374,9 @@ class TigerBroker(BrokerBase):
             seen.add(oid)
 
             contract     = str(getattr(o,'contract',''))
-            trade_date   = _ts_to_sgt_date(getattr(o,'order_time',0) or 0)
+            order_ts     = getattr(o,'order_time',0) or 0
+            trade_date   = _ts_to_sgt_date(order_ts)
+            entry_time   = _ts_to_utc_iso(order_ts)
             realized_pnl = round(float(getattr(o,'realized_pnl',0) or 0), 2)
             action       = str(getattr(o,'action',''))
             qty          = float(getattr(o,'filled',0) or 0)
@@ -391,6 +398,7 @@ class TigerBroker(BrokerBase):
                     option_type=parsed.get('option_type',''),
                     strike=parsed.get('strike',0.0),
                     expiry=parsed.get('expiry',''),
+                    entry_time=entry_time,
                 ))
 
             elif '/OPT/' in contract:
@@ -406,6 +414,7 @@ class TigerBroker(BrokerBase):
                     option_type=parsed['option_type'],
                     strike=parsed['strike'],
                     expiry=parsed['expiry'],
+                    entry_time=entry_time,
                 ))
 
             else:
@@ -417,6 +426,7 @@ class TigerBroker(BrokerBase):
                     quantity=qty, avg_price=avg_price,
                     realized_pnl=realized_pnl,
                     strategy='long_stock' if action=='BUY' else 'short_stock',
+                    entry_time=entry_time,
                 ))
 
         print(f'    [{self.name}] ✅ {len(trades)} trade records built')
