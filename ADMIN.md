@@ -62,13 +62,10 @@ Full architecture, infrastructure, and release process for Kairos Agent.
 
 | File | Platform | Purpose |
 |------|----------|---------|
-| `app.py` | macOS | Menubar app entry point (rumps) |
-| `app_win.py` | Windows | System tray entry point (pystray) |
+| `app.py` | macOS + Windows | Unified tray app entry point (pystray — cross-platform) |
 | `app_docker.py` | Docker | Headless entry point — no tray, web dashboard on port 7432 |
 | `server.py` | All | Web dashboard + API (`/api/status`, `/api/sync`, `/api/reset`, `/api/logs`) |
-| `ssl_patch.py` | All | certifi SSL fix — must be imported before any network code |
-| `jobs/setup.py` | macOS | Setup wizard (rumps dialogs + osascript) |
-| `jobs/setup_win.py` | Windows | Setup wizard (tkinter) |
+| `ssl_patch.py` | Docker / CLI | certifi SSL fix — imported by app_docker.py and upload_sync.py |
 | `jobs/upload_sync.py` | All | Sync orchestration + R2 upload |
 | `jobs/creds.py` | All | Local credential store |
 | `sync/sync.py` | All | Trade fetch, merge, analytics |
@@ -77,17 +74,19 @@ Full architecture, infrastructure, and release process for Kairos Agent.
 | `sync/brokers/moomoo.py` | All | Moomoo API client (Futu OpenD SDK) |
 | `sync/brokers/webull.py` | All | Webull (stub — not yet configured) |
 | `kairos.spec` | macOS | PyInstaller build config |
-| `kairos_win.spec` | Windows | PyInstaller build config |
+| `kairos_win.spec` | Windows | PyInstaller build config (same `app.py` entry point) |
 | `Dockerfile` | Docker | Container image definition |
 | `docker-compose.yml` | Docker | Compose config (port 7432, volume mount) |
 | `update.sh` | Docker | Pull latest image and restart container |
+| `com.kairos.menubar.plist` | macOS | launchd template for auto-start on login (edit paths before use) |
 
 **Key design decisions:**
-- Sync runs **in-process** (`importlib.reload`) — not subprocess — to avoid spawning a second menubar icon on macOS
+- `app.py` is a **unified cross-platform entry point** using `pystray` for both macOS and Windows — no separate `app_win.py`
+- Setup wizard is served via `server.py` at `/setup` — no separate setup.py dialogs
+- Sync runs **in-process** (`importlib.reload`) — not subprocess — to avoid spawning a second tray icon
 - `BUNDLE_VERSION` in `upload_sync.py` controls re-extraction of `sync/` code from the bundle to `~/.kairos-agent/sync/` — always bump on release when sync code changes
 - No `keyring` — credentials in `credentials.json` with `chmod 600` to avoid unsigned-app Keychain prompts
 - Tiger credentials parsed manually from `.properties` file (`_load_props()`) — `TigerOpenClientConfig` does not support a `config_file_path` constructor
-- macOS setup timer fires from main thread via `rumps.Timer` — required for AppKit thread safety
 - Moomoo connects via local OpenD on `127.0.0.1:11111` (macOS/Windows) or `host.docker.internal:11111` (Docker)
 
 ### Cloudflare Pages (Portal + API)

@@ -23,3 +23,6 @@ credentials.json
 # Sync cache
 sync/leg_cache.json
 data.backup.json
+
+# Wrangler local dev cache (belongs in kairos/ portal, not here)
+.wrangler/

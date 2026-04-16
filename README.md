@@ -2,7 +2,7 @@
 
 Kairos Agent collects your trade data from Tiger Brokers and Moomoo (Futu) and uploads it to Cloudflare. The [Kairos portal](https://kairos-f3w.pages.dev) reads that data and displays your private trading journal.
 
-Available as a **macOS menubar app**, **Windows system tray app**, or **Docker container**.
+Available as a **macOS/Windows system tray app** or **Docker container**.
 
 ---
 
@@ -266,7 +266,7 @@ git clone https://github.com/etherhtun/kairos_agents.git
 cd kairos_agents
 
 # macOS
-pip install rumps pyinstaller certifi
+pip install pyinstaller pystray pillow certifi
 pip install -r requirements.txt
 APP_VERSION=1.5.5 python -m PyInstaller kairos.spec --noconfirm
 # Output: dist/Kairos.app

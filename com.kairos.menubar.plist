@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.kairos.menubar.plist — macOS launchd agent (auto-start on login)
+  =====================================================================
+  Optional: use this to auto-start Kairos Agent when you log in,
+  instead of adding it to Login Items manually.
+
+  Setup:
+    1. Edit the two paths below to match where you cloned kairos_agents/
+    2. Copy to ~/Library/LaunchAgents/com.kairos.menubar.plist
+    3. Run: launchctl load ~/Library/LaunchAgents/com.kairos.menubar.plist
+
+  To stop auto-start:
+    launchctl unload ~/Library/LaunchAgents/com.kairos.menubar.plist
+    rm ~/Library/LaunchAgents/com.kairos.menubar.plist
+-->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -7,11 +22,13 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/rwh/Documents/Project-Kairos/kairos-menubar/run.sh</string>
+        <!-- Edit this path to where you cloned kairos_agents/ -->
+        <string>/path/to/kairos_agents/run.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/rwh/Documents/Project-Kairos/kairos-menubar</string>
+    <!-- Edit this path to match above -->
+    <string>/path/to/kairos_agents</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -23,10 +40,10 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/rwh/Documents/Project-Kairos/kairos-menubar/logs/launchd.out.log</string>
+    <string>/tmp/kairos-launchd.out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/rwh/Documents/Project-Kairos/kairos-menubar/logs/launchd.err.log</string>
+    <string>/tmp/kairos-launchd.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
