@@ -37,6 +37,39 @@ Kairos Agent
 
 ---
 
+## What You Need to Create Locally
+
+The repo is **clone-and-go** for building. To actually **run** the agent, you need two credential files that are gitignored and never committed:
+
+| File | Where it comes from | Created by |
+|------|-------------------|------------|
+| `~/.kairos-agent/credentials.json` | Your upload token from the portal | Setup wizard (automatic) or manually |
+| `~/.kairos-agent/tiger_openapi_config.properties` | Download from Tiger app → API Management | Setup wizard (automatic) or manually |
+
+**Using the app (macOS/Windows/Docker):** The setup wizard creates both files for you — just paste your token and upload the properties file when prompted. Nothing to do manually.
+
+**Running `sync.py` directly (CLI / dev):** You have two options:
+
+Option A — Properties file (recommended):
+```bash
+mkdir -p ~/.kairos-agent
+cp /path/to/tiger_openapi_config.properties ~/.kairos-agent/
+echo '{"upload_token": "your-token-here"}' > ~/.kairos-agent/credentials.json
+chmod 600 ~/.kairos-agent/credentials.json ~/.kairos-agent/tiger_openapi_config.properties
+```
+
+Option B — `.env` file in the repo root (fallback, used if properties file is absent):
+```bash
+# Copy the example and fill in your values
+cp .env.example .env
+# Edit .env: set TIGER_ID, TIGER_ACCOUNT, TIGER_LICENSE, TIGER_ENV
+# The private key must still be in tiger_openapi_config.properties
+```
+
+> **Moomoo** needs no config file — OpenD on your machine is detected automatically on `127.0.0.1:11111`.
+
+---
+
 ## What the Agent Does
 
 - Connects to Tiger Brokers using your local `tiger_openapi_config.properties`

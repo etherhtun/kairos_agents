@@ -18,6 +18,7 @@ __pycache__/
 # Credentials (never commit)
 credentials.json
 *.properties
+.env
 
 # Sync cache
 sync/leg_cache.json
