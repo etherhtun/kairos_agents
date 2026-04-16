@@ -188,6 +188,14 @@ class TigerBroker(BrokerBase):
         base64.b64decode(raw)
         return raw
 
+    def close(self):
+        if self._client:
+            try:
+                self._client.disconnect()
+            except Exception:
+                pass
+            self._client = None
+
     def get_account(self) -> AccountSummary:
         try:
             f        = vars(self._client.get_prime_assets())
