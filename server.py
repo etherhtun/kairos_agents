@@ -479,8 +479,18 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 token = creds.get('upload_token')
                 if token:
                     empty = json.dumps({
-                        'trades': [], 'positions': [], 'accounts': [],
-                        'summary': {}, 'generated_at': datetime.datetime.now().isoformat(),
+                        'meta': {
+                            'last_sync':    None,
+                            'total_trades': 0,
+                            'brokers':      [],
+                            'incremental':  False,
+                        },
+                        'trades':         [],
+                        'open_positions': [],
+                        'accounts':       [],
+                        'daily_pnl':      [],
+                        'cumulative_pnl': [],
+                        'stats':          [],
                     }).encode()
                     req = urllib.request.Request(
                         UPLOAD_URL, data=empty,
