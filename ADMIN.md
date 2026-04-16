@@ -1,6 +1,6 @@
-# Kairos — System Design & Admin Guide
+# Kairos Agent — System Design & Admin Guide
 
-This document covers the full architecture, infrastructure, and release process for Kairos.
+Full architecture, infrastructure, and release process for Kairos Agent.
 
 ---
 
@@ -11,14 +11,22 @@ This document covers the full architecture, infrastructure, and release process 
 │                  USER'S MACHINE                     │
 │                                                     │
 │  ┌─────────────────────────────────────────────┐   │
-│  │  Kairos Agent (macOS menubar / Win tray)    │   │
-│  │  app.py / app_win.py                        │   │
+│  │  Kairos Agent                               │   │
 │  │                                             │   │
-│  │  jobs/upload_sync.py                        │   │
-│  │    └─ sync/sync.py ──► classifier.py        │   │
-│  │         └─ brokers/tiger.py                 │   │
-│  │              └─ tiger_openapi_config.props  │   │
-│  │                   (never leaves machine)    │   │
+│  │  app.py          macOS menubar (rumps)      │   │
+│  │  app_win.py      Windows tray (pystray)     │   │
+│  │  app_docker.py   Docker / headless (Flask)  │   │
+│  │  server.py       Web dashboard (port 7432)  │   │
+│  │                                             │   │
+│  │  jobs/upload_sync.py  → sync orchestration  │   │
+│  │    sync/sync.py       → fetch + merge       │   │
+│  │      classifier.py    → strategy labels     │   │
+│  │      brokers/tiger.py → Tiger API           │   │
+│  │      brokers/moomoo.py→ Moomoo OpenD API    │   │
+│  │                                             │   │
+│  │  credentials.json     (upload token)        │   │
+│  │  tiger_openapi_config.properties            │   │
+│  │      (never leaves machine)                 │   │
 │  │                                             │   │
 │  │  Output: ~/.kairos-agent/data.json          │   │
 │  └───────────────┬─────────────────────────────┘   │
@@ -50,30 +58,39 @@ This document covers the full architecture, infrastructure, and release process 
 
 ## Components
 
-### 1. Kairos Agent
+### Agent files
 
 | File | Platform | Purpose |
 |------|----------|---------|
 | `app.py` | macOS | Menubar app entry point (rumps) |
 | `app_win.py` | Windows | System tray entry point (pystray) |
+| `app_docker.py` | Docker | Headless entry point — no tray, web dashboard on port 7432 |
+| `server.py` | All | Web dashboard + API (`/api/status`, `/api/sync`, `/api/reset`, `/api/logs`) |
+| `ssl_patch.py` | All | certifi SSL fix — must be imported before any network code |
 | `jobs/setup.py` | macOS | Setup wizard (rumps dialogs + osascript) |
 | `jobs/setup_win.py` | Windows | Setup wizard (tkinter) |
-| `jobs/upload_sync.py` | Both | Sync orchestration + R2 upload |
-| `jobs/creds.py` | Both | Local credential store |
-| `sync/sync.py` | Both | Trade fetch, merge, analytics |
-| `sync/classifier.py` | Both | Options strategy classification |
-| `sync/brokers/tiger.py` | Both | Tiger Brokers API client |
+| `jobs/upload_sync.py` | All | Sync orchestration + R2 upload |
+| `jobs/creds.py` | All | Local credential store |
+| `sync/sync.py` | All | Trade fetch, merge, analytics |
+| `sync/classifier.py` | All | Options strategy classification |
+| `sync/brokers/tiger.py` | All | Tiger Brokers API client (TigerOpen SDK) |
+| `sync/brokers/moomoo.py` | All | Moomoo API client (Futu OpenD SDK) |
+| `sync/brokers/webull.py` | All | Webull (stub — not yet configured) |
 | `kairos.spec` | macOS | PyInstaller build config |
 | `kairos_win.spec` | Windows | PyInstaller build config |
+| `Dockerfile` | Docker | Container image definition |
+| `docker-compose.yml` | Docker | Compose config (port 7432, volume mount) |
+| `update.sh` | Docker | Pull latest image and restart container |
 
 **Key design decisions:**
-- Sync runs **in-process** (`importlib.reload`) — not subprocess — to avoid spawning a second menubar icon
-- `BUNDLE_VERSION` in `upload_sync.py` triggers force-refresh of `~/.kairos-agent/sync/` on app update — always bump this on release
-- No `keyring` — credentials stored in `credentials.json` with `chmod 600` to avoid unsigned-app keychain prompts
-- Tiger credentials parsed manually from `.properties` file (`_load_props()`) — `TigerOpenClientConfig` does not support `config_file_path`
-- macOS setup timer fires from main thread via `rumps.Timer` (not `threading.Thread`) — required for AppKit safety
+- Sync runs **in-process** (`importlib.reload`) — not subprocess — to avoid spawning a second menubar icon on macOS
+- `BUNDLE_VERSION` in `upload_sync.py` controls re-extraction of `sync/` code from the bundle to `~/.kairos-agent/sync/` — always bump on release when sync code changes
+- No `keyring` — credentials in `credentials.json` with `chmod 600` to avoid unsigned-app Keychain prompts
+- Tiger credentials parsed manually from `.properties` file (`_load_props()`) — `TigerOpenClientConfig` does not support a `config_file_path` constructor
+- macOS setup timer fires from main thread via `rumps.Timer` — required for AppKit thread safety
+- Moomoo connects via local OpenD on `127.0.0.1:11111` (macOS/Windows) or `host.docker.internal:11111` (Docker)
 
-### 2. Cloudflare Pages (Portal + API)
+### Cloudflare Pages (Portal + API)
 
 | Endpoint | Auth | Purpose |
 |----------|------|---------|
@@ -83,11 +100,11 @@ This document covers the full architecture, infrastructure, and release process 
 | `GET /api/prices` | None (public) | Live market data + technical indicators |
 | `GET /api/history` | None (public) | OHLC data from Yahoo Finance |
 
-### 3. Cloudflare Infrastructure
+### Cloudflare Infrastructure
 
 | Resource | Name / ID | Purpose |
 |----------|-----------|---------|
-| R2 Bucket | `kairos-profiles` | Per-user `data.json` — path: `profiles/{sub}/data.json` |
+| R2 Bucket | `kairos-profiles` | Per-user `data.json` at `profiles/{sub}/data.json` |
 | KV Namespace | `TOKENS` (`755904cd9183434bbd6acfa45933dc11`) | Token ↔ sub mapping |
 | CF Access App | Kairos Portal | Protects all portal routes |
 | CF Access Bypass | Path: `/api/upload` | Allows agent to POST without browser session |
@@ -106,16 +123,18 @@ This document covers the full architecture, infrastructure, and release process 
 
 ### Sync & Upload
 1. Agent loads Tiger credentials from `~/.kairos-agent/tiger_openapi_config.properties`
-2. Fetches trades (incremental: last 30 days; first run: 3 years)
-3. Classifies strategies, builds analytics JSON
-4. Writes `~/.kairos-agent/data.json`
-5. `POST /api/upload` with `Authorization: Bearer {token}`
-6. Worker validates KV → writes `R2: profiles/{sub}/data.json`
+2. Fetches trades (incremental: last 90 days; first run: full history)
+3. Moomoo trades fetched via OpenD if available
+4. Classifies strategies, builds analytics JSON
+5. Writes `~/.kairos-agent/data.json`
+6. `POST /api/upload` with `Authorization: Bearer {token}`
+7. Worker validates KV → writes `R2: profiles/{sub}/data.json`
 
-### Portal Data Load
-1. Browser `GET /api/trades` (CF Access cookie)
-2. Worker decodes JWT → extracts `sub`
-3. Reads `R2: profiles/{sub}/data.json` → returns to browser
+### Reset & Resync
+When the user clicks "Reset & Resync" on the dashboard:
+1. `data.json` and `leg_cache.json` are deleted locally
+2. Empty payload is sent to portal to clear the R2 profile
+3. Full sync is triggered immediately
 
 ---
 
@@ -148,7 +167,7 @@ id = "755904cd9183434bbd6acfa45933dc11"
 
 ### Step 4 — Bind to Pages Project
 ```
-Workers & Pages → kairos-f3w → Settings → Functions
+Workers & Pages → kairos → Settings → Functions
 → R2 bindings: PROFILES → kairos-profiles
 → KV bindings: TOKENS → TOKENS
 ```
@@ -157,48 +176,61 @@ Workers & Pages → kairos-f3w → Settings → Functions
 ```
 Zero Trust → Access → Applications → Self-hosted
   Domain: kairos-f3w.pages.dev
-  Policy: Allow (Google auth)
-  Bypass policy: Path /api/upload (allows agent uploads)
+  Policy: Allow (Google auth, your email)
+  Bypass policy: Path /api/upload  ← allows agent uploads without browser session
 ```
 
 ---
 
 ## Release Process
 
-### 1. Bump versions
+### 1. Bump BUNDLE_VERSION (if sync code changed)
 
 In `jobs/upload_sync.py`:
 ```python
-BUNDLE_VERSION = '1.5'   # ← increment every release
+# Bump whenever sync/, brokers/, or classifier.py changes.
+# History: 1.0 (initial), 2.0 (CSP/CC + module cache fix),
+#          2.1 (Tiger net value + INCREMENTAL_DAYS=90),
+#          2.2 (remove SSL block, TigerBroker.close(), fix bare except)
+BUNDLE_VERSION = '2.2'
 ```
 
-In `kairos.spec`:
-```python
-'CFBundleShortVersionString': '1.2.0',
-```
+> `BUNDLE_VERSION` controls re-extraction of `sync/` from the PyInstaller bundle to `~/.kairos-agent/sync/`. Users with older installs automatically get fresh sync code on their next run.
 
-### 2. Push a version tag — CI builds both platforms automatically
+### 2. Tag and push — CI builds both platforms automatically
 
 ```bash
 git add .
-git commit -m "chore: bump to v1.2.0"
+git commit -m "chore: bump to v1.5.5"
 git push
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.5.5
+git push origin v1.5.5
 ```
 
 GitHub Actions (`.github/workflows/release.yml`) will:
-- Build `Kairos-v1.2.0-mac.dmg` on a macOS runner
-- Build `Kairos-v1.2.0-windows.zip` on a Windows runner
-- Upload both to the GitHub Release automatically
+- Build `Kairos-v1.5.5-mac.dmg` on a macOS runner
+- Build `Kairos-v1.5.5-windows.zip` on a Windows runner
+- Build and push `ghcr.io/etherhtun/kairos-agent:v1.5.5` and `:latest`
+- Upload all artifacts to the GitHub Release automatically
 
-### 3. Update portal download links
+> `CFBundleShortVersionString` in `kairos.spec` is set automatically from the `APP_VERSION` environment variable passed by CI — no manual edit needed.
 
-In `kairos/connect-tiger.html` — update both download hrefs to the new version tag.
+### 3. Portal download links
 
-In `kairos/index.html` — update the version label in the Connect Broker modal.
+The connect pages (`connect-tiger.html`, `connect-moomoo.html`) fetch the latest release tag dynamically from the GitHub API on page load — **no manual update needed**.
 
-Commit and push → Cloudflare Pages deploys automatically.
+### 4. Update Docker container (users)
+
+Users running Docker can update with:
+```bash
+./update.sh
+# or manually:
+docker rm -f kairos-agent
+docker pull ghcr.io/etherhtun/kairos-agent:latest
+docker run -d --name kairos-agent --restart unless-stopped \
+  -p 127.0.0.1:7432:7432 -v ~/.kairos-agent:/root/.kairos-agent \
+  ghcr.io/etherhtun/kairos-agent:latest
+```
 
 ---
 
@@ -240,19 +272,20 @@ Workers & Pages → KV → TOKENS
 → Delete: token:{uuid}
 → Delete: profile:{sub}
 ```
-User must re-run Setup from `/connect-tiger` to get a new token.
+User must re-run Setup from the portal connect page to get a new token.
 
 ---
 
 ## Logs & Error Codes
 
-Agent sync logs: `~/.kairos-agent/logs/sync.log`
+Agent sync log: `~/.kairos-agent/logs/sync.log`
 
 | Code | Step | Meaning |
 |------|------|---------|
+| 0 | done | Sync and upload succeeded |
 | -2 | sync | Sync module threw an exception |
 | -3 | upload | `data.json` missing after sync |
-| -4 | upload | `upload_token` not configured |
+| -4 | upload | `upload_token` not configured — run Setup |
 | -5 | upload_failed | HTTP error from `/api/upload` |
 
 ---
@@ -263,5 +296,5 @@ Agent sync logs: `~/.kairos-agent/logs/sync.log`
 - Tiger credentials never leave the user's machine
 - R2 data is isolated per `sub` — users cannot access each other's data
 - CF Zero Trust enforces auth on all portal routes
-- `/api/upload` bypass is scoped to that path only — portal remains protected
+- `/api/upload` bypass is scoped to that path only — rest of portal remains protected
 - Local credentials stored with `chmod 600` (macOS/Linux) or restricted ACL (Windows)
