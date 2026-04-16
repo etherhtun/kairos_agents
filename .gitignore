@@ -21,3 +21,4 @@ credentials.json
 
 # Sync cache
 sync/leg_cache.json
+data.backup.json
