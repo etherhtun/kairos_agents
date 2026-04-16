@@ -239,7 +239,7 @@ class TigerBroker(BrokerBase):
                 expiry   = f"20{exp_raw[:2]}-{exp_raw[2:4]}-{exp_raw[4:]}"
                 opt_type = opt_code[6]
                 try: strike = int(opt_code[7:]) / 1000 if len(opt_code) > 7 else 0.0
-                except: strike = 0.0
+                except (ValueError, TypeError): strike = 0.0
             return Position(
                 broker=self.name, symbol=symbol, contract=contract,
                 asset_type=asset_type, expiry=expiry,
