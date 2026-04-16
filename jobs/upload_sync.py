@@ -34,7 +34,11 @@ def _bundled_sync_dir() -> pathlib.Path:
     return pathlib.Path(__file__).resolve().parent.parent / 'sync'
 
 
-BUNDLE_VERSION = '2.1'  # bump this when sync code changes
+# Bump BUNDLE_VERSION whenever sync/ code changes (brokers, classifier, sync.py).
+# This forces re-extraction of the bundled sync code to ~/.kairos-agent/sync/
+# on the next run, even if the app version hasn't changed.
+# History: 1.0 (initial), 2.0 (CSP/CC + module cache fix), 2.1 (Tiger net value + INCREMENTAL_DAYS=90)
+BUNDLE_VERSION = '2.1'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""
