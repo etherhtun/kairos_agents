@@ -140,45 +140,97 @@ When the user clicks "Reset & Resync" on the dashboard:
 
 ## Cloudflare Setup (from scratch)
 
-### Step 1 — R2 Bucket
+This covers the full infrastructure setup for both the portal (`kairos/`) and the agent upload endpoint.
+
+### Step 1 — R2 Bucket (trade data storage)
+
 ```
-Dashboard → R2 → Create bucket → kairos-profiles
+Cloudflare Dashboard → R2 → Create bucket
+  Name: kairos-profiles
 ```
 
-### Step 2 — KV Namespace
-```
-Workers & Pages → KV → Create namespace → TOKENS
-```
-Copy the KV ID into `wrangler.toml`.
+### Step 2 — KV Namespace (token store)
 
-### Step 3 — wrangler.toml
+```
+Workers & Pages → KV → Create namespace
+  Name: TOKENS
+```
+
+Copy the generated **KV Namespace ID** — you'll need it in step 3.
+
+### Step 3 — wrangler.toml (portal repo)
+
+In the `kairos/` repo, update `wrangler.toml` with the KV ID from step 2:
+
 ```toml
 name = "kairos"
 pages_build_output_dir = "."
 
 [[r2_buckets]]
-binding = "PROFILES"
+binding    = "PROFILES"
 bucket_name = "kairos-profiles"
 
 [[kv_namespaces]]
 binding = "TOKENS"
-id = "755904cd9183434bbd6acfa45933dc11"
+id      = "YOUR_KV_NAMESPACE_ID"
 ```
 
-### Step 4 — Bind to Pages Project
+### Step 4 — Create Pages Project & connect GitHub
+
 ```
-Workers & Pages → kairos → Settings → Functions
-→ R2 bindings: PROFILES → kairos-profiles
-→ KV bindings: TOKENS → TOKENS
+Workers & Pages → Pages → Create → Connect to Git
+  Repository: etherhtun/kairos
+  Framework preset: None
+  Build command: (leave empty)
+  Build output directory: .
 ```
 
-### Step 5 — CF Zero Trust
+Once connected, every push to `main` deploys automatically.
+
+**Or deploy manually** (no git connection needed):
+```bash
+cd kairos/
+npm install -g wrangler
+wrangler login
+npx wrangler pages deploy . --project-name kairos
 ```
-Zero Trust → Access → Applications → Self-hosted
+
+### Step 5 — Bind resources to the Pages project
+
+```
+Workers & Pages → kairos → Settings → Functions → Bindings
+  R2 bucket:    PROFILES → kairos-profiles
+  KV namespace: TOKENS   → TOKENS
+```
+
+> Bindings must be set for both **Production** and **Preview** environments if you use preview deployments.
+
+### Step 6 — CF Zero Trust (access gate)
+
+```
+Zero Trust → Access → Applications → Add → Self-hosted
+  Application name: Kairos
   Domain: kairos-f3w.pages.dev
-  Policy: Allow (Google auth, your email)
-  Bypass policy: Path /api/upload  ← allows agent uploads without browser session
+
+  Policy 1 — Allow
+    Action: Allow
+    Rule: Emails → your@email.com
+    (or Emails ending in → yourdomain.com)
+
+  Policy 2 — Bypass (CRITICAL for agent uploads)
+    Action: Bypass
+    Rule: Everyone
+    Path: /api/upload
 ```
+
+Without the Bypass policy on `/api/upload`, the agent cannot POST trade data — it will get a 403.
+
+### Step 7 — Verify
+
+1. Visit `https://kairos-f3w.pages.dev` — you should be prompted for Google login
+2. After login, go to `/connect-tiger` — an upload token should appear
+3. Use that token in the agent setup wizard
+4. Run a manual sync — check `~/.kairos-agent/logs/sync.log` for `Uploaded: {'ok': True}`
 
 ---
 
