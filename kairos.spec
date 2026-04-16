@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec — macOS (arm64; runs on Intel via Rosetta 2)
 
+import os
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files
 ROOT = Path(SPECPATH)
@@ -78,6 +79,6 @@ app = BUNDLE(
     info_plist={
         'LSUIElement': True,            # menu bar only — hide from Dock
         'NSHighResolutionCapable': True,
-        'CFBundleShortVersionString': '1.0.0',
+        'CFBundleShortVersionString': os.environ.get('APP_VERSION', '1.0.0'),
     },
 )
