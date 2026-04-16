@@ -504,8 +504,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                     try:
                         with urllib.request.urlopen(req, timeout=15):
                             pass
-                    except Exception:
-                        pass  # portal clear failed — sync will overwrite anyway
+                    except Exception as e:
+                        print(f'[reset] warning: portal clear failed: {e} — sync will overwrite', flush=True)
 
                 # 3. Trigger full resync
                 if _sync_fn:

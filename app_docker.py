@@ -34,8 +34,8 @@ def load_state() -> dict:
     if STATE_FILE.exists():
         try:
             return json.loads(STATE_FILE.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            print(f'[kairos] warning: state.json unreadable: {e} — starting fresh', flush=True)
     return {'last_sync': None, 'auto': True, 'setup_done': False}
 
 

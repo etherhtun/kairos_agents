@@ -18,5 +18,5 @@ def apply():
                 kwargs['cafile'] = _ca
             return _orig(*args, **kwargs)
         ssl.create_default_context = _patched
-    except Exception:
-        pass
+    except Exception as e:
+        print(f'[ssl_patch] warning: could not apply SSL fix: {e}', flush=True)
