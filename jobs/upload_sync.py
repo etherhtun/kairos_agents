@@ -18,10 +18,11 @@ import urllib.error
 import ssl_patch; ssl_patch.apply()
 
 from jobs import creds
+import config
 
 AGENT_DIR  = pathlib.Path.home() / '.kairos-agent'
 DATA_FILE  = AGENT_DIR / 'data.json'
-UPLOAD_URL = 'https://kairos-f3w.pages.dev/api/upload'
+UPLOAD_URL = config.UPLOAD_URL
 LOG_DIR    = AGENT_DIR / 'logs'
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE   = LOG_DIR / 'sync.log'

@@ -29,6 +29,7 @@ import urllib.request
 
 from jobs import creds
 from jobs.upload_sync import last_data_age_hours, UPLOAD_URL, DATA_FILE
+import config
 
 # ── Module-level state (set by start()) ──────────────────────────────────────
 _PORT      = 7432
@@ -198,7 +199,7 @@ def _dashboard() -> str:
     <button class="btn green" id="sync-btn" onclick="syncNow(this)">Sync Now</button>
     <button class="btn ghost" id="reset-btn" onclick="resetData(this)" style="color:#e74c3c;border-color:#5a0000" title="Delete local data and re-sync full history">Reset &amp; Resync</button>
     <a class="btn ghost" href="/setup">Setup / Reconfigure</a>
-    <a class="btn ghost" href="https://kairos-f3w.pages.dev" target="_blank">Portal ↗</a>
+    <a class="btn ghost" href="{config.PORTAL_URL}" target="_blank">Portal ↗</a>
   </div>
   <div id="msg"></div>
 
@@ -304,7 +305,7 @@ def _setup(flash: str = '', flash_type: str = '') -> str:
     <div class="sh">Step 1 — Upload Token</div>
     <div class="hint">
       Get this from the Kairos portal:<br>
-      <strong>kairos-f3w.pages.dev → Connect Tiger → Copy token</strong>
+      <strong>{config.PORTAL_URL} → Connect Tiger → Copy token</strong>
     </div>
     <label for="tok">Upload Token</label>
     <input type="text" id="tok" name="upload_token"
@@ -350,7 +351,7 @@ def _setup_success() -> str:
   </div>
 
   <div class="actions" style="margin-top:20px">
-    <a id="portal-btn" class="btn green" href="https://kairos-f3w.pages.dev"
+    <a id="portal-btn" class="btn green" href="{config.PORTAL_URL}"
        style="display:none" target="_blank">Open Portal →</a>
     <a class="btn ghost" href="/">Dashboard</a>
   </div>

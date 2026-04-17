@@ -44,13 +44,14 @@ import pystray
 from PIL import Image, ImageDraw
 
 import server
+import config
 from jobs.upload_sync import run_sync, last_data_age_hours, LOG_FILE
 
 STATE_FILE     = pathlib.Path.home() / '.kairos-agent' / 'state.json'
-PORTAL_URL     = 'https://kairos-f3w.pages.dev'
-SERVER_PORT    = 7432
-AUTO_SYNC_HOUR = 16
-AUTO_SYNC_MIN  = 30
+PORTAL_URL     = config.PORTAL_URL
+SERVER_PORT    = config.SERVER_PORT
+AUTO_SYNC_HOUR = config.AUTO_SYNC_HOUR
+AUTO_SYNC_MIN  = config.AUTO_SYNC_MIN
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
