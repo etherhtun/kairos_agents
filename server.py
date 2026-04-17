@@ -12,6 +12,7 @@ Security mitigations built in:
   5. All user/broker data is HTML-escaped before rendering
 """
 
+import base64
 import datetime
 import html
 import http.server
@@ -44,6 +45,23 @@ CSRF_TOKEN = secrets.token_hex(32)
 
 # ── Env file helpers ──────────────────────────────────────────────────────────
 _ENV_FILE = pathlib.Path.home() / '.kairos-agent' / '.env'
+
+def _decode_connection_string(raw: str):
+    """Decode a portal connection string into (portal_url, token).
+
+    Format: base64(JSON({"url": "...", "token": "..."}))
+    Falls back to (None, raw) for plain UUID tokens (legacy).
+    """
+    try:
+        decoded = json.loads(base64.b64decode(raw + '==').decode())
+        url   = decoded.get('url', '').rstrip('/')
+        token = decoded.get('token', '')
+        if url and token:
+            return url, token
+    except Exception:
+        pass
+    return None, raw  # plain token — portal URL unknown
+
 
 def _write_env_var(key: str, value: str) -> None:
     """Upsert KEY=value in ~/.kairos-agent/.env (creates file if absent)."""
@@ -315,8 +333,6 @@ def _setup(flash: str = '', flash_type: str = '') -> str:
     props_status   = '✓ Tiger config already saved — upload new file to replace' \
                      if has_props else 'Not yet configured'
 
-    existing_portal = config.PORTAL_URL or ''
-
     return _page('Kairos Setup', f"""
 <div class="card">
   <h1>Kairos Setup</h1>
@@ -326,27 +342,15 @@ def _setup(flash: str = '', flash_type: str = '') -> str:
   <form method="POST" action="/api/setup" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{CSRF_TOKEN}">
 
-    <div class="sh">Step 1 — Portal URL</div>
+    <div class="sh">Step 1 — Connection String</div>
     <div class="hint">
-      Your Cloudflare Pages URL — e.g. <strong>https://mykairos.pages.dev</strong><br>
-      Find it in your Cloudflare dashboard under Pages → kairos → Deployments.
+      Go to your Kairos portal → <strong>Connect Tiger</strong> → copy the connection string.<br>
+      It links the agent to your portal automatically — no URL needed separately.
     </div>
-    <label for="portal">Portal URL</label>
-    <input type="url" id="portal" name="portal_url"
-           value="{html.escape(existing_portal)}"
-           placeholder="https://your-project.pages.dev" autocomplete="off">
-
-    <hr>
-
-    <div class="sh">Step 2 — Upload Token</div>
-    <div class="hint">
-      Get this from the Kairos portal:<br>
-      <strong>Portal → Connect Tiger → Copy token</strong>
-    </div>
-    <label for="tok">Upload Token</label>
+    <label for="tok">Connection String</label>
     <input type="text" id="tok" name="upload_token"
            value="{html.escape(existing_token)}"
-           placeholder="Paste your upload token here" autocomplete="off">
+           placeholder="Paste connection string from your portal" autocomplete="off">
 
     <hr>
 
@@ -562,7 +566,6 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         raw_body     = self.rfile.read(length)
         content_type = self.headers.get('Content-Type', '')
 
-        portal_val   = ''
         token_val    = ''
         props_bytes  = None
         props_fname  = ''
@@ -583,7 +586,6 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 self._send(200, _setup('CSRF check failed. Please try again.', 'error'))
                 return
 
-            portal_val = (fields.get('portal_url') or '').strip().rstrip('/')
             token_val  = (fields.get('upload_token') or '').strip()
             fp = fields.get('tiger_props')
             if isinstance(fp, dict) and fp.get('filename'):
@@ -596,7 +598,6 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             if csrf_val != CSRF_TOKEN:
                 self._send(200, _setup('CSRF check failed. Please try again.', 'error'))
                 return
-            portal_val = fields.get('portal_url', '').strip().rstrip('/')
             token_val  = fields.get('upload_token', '').strip()
         else:
             self._send(200, _setup('Unsupported content type.', 'error'))
@@ -617,12 +618,15 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 self._send(200, _setup('Properties file appears empty.', 'error'))
                 return
 
+        # Decode connection string → extract portal URL + real token ─────────
+        portal_url, token_val = _decode_connection_string(token_val)
+
         # Save portal URL to ~/.kairos-agent/.env ────────────────────────────
-        if portal_val:
-            _write_env_var('KAIROS_PORTAL_URL', portal_val)
-            config.PORTAL_URL  = portal_val
-            config.UPLOAD_URL  = f"{portal_val}/api/upload"
-            config.SIGNAL_URL  = f"{portal_val}/api/signals"
+        if portal_url:
+            _write_env_var('KAIROS_PORTAL_URL', portal_url)
+            config.PORTAL_URL  = portal_url
+            config.UPLOAD_URL  = f"{portal_url}/api/upload"
+            config.SIGNAL_URL  = f"{portal_url}/api/signals"
 
         # Save token ──────────────────────────────────────────────────────────
         creds.set('upload_token', token_val)
