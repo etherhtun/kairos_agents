@@ -13,9 +13,9 @@ Run:  python3 sync/sync.py
       (or use run_sync.sh which also git pushes)
 """
 
-import json, os, sys, shutil, warnings, urllib.request
+import json, os, sys, shutil, warnings
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 warnings.filterwarnings('ignore')
@@ -192,99 +192,11 @@ def build_trade_records(trades: list) -> list:
         'option_type':  t.option_type,
         'strike':       t.strike,
         'expiry':       t.expiry,
-        # Signal tagging — populated by tag_trades_with_signals()
+        # Signal tagging — populated server-side by signal-stats API
         'signal_tier':     None,
         'signal_score':    None,
         'regime_at_entry': None,
     } for t in trades], key=lambda x: x['date'])
-
-
-# ── Signal tagging ────────────────────────────────────────────────────────────
-
-def _find_closest_signal(day_signals: list, entry_time_iso: str) -> dict | None:
-    """Return the signal closest to entry_time within ±2 hours, or None."""
-    if not day_signals:
-        return None
-
-    if not entry_time_iso:
-        # No timestamp — return highest-tier signal of the day
-        rank = {'PRIME': 2, 'VALID': 1}
-        return max(day_signals, key=lambda s: rank.get(s.get('tier', ''), 0))
-
-    try:
-        entry_dt = datetime.fromisoformat(entry_time_iso.replace('Z', '+00:00'))
-    except ValueError:
-        return None
-
-    window = timedelta(hours=2)
-    candidates = []
-    for sig in day_signals:
-        try:
-            sig_dt = datetime.fromisoformat(sig['ts'].replace('Z', '+00:00'))
-        except (KeyError, ValueError):
-            continue
-        diff = abs((sig_dt - entry_dt).total_seconds())
-        if diff <= window.total_seconds():
-            candidates.append((diff, sig))
-
-    return min(candidates, key=lambda x: x[0])[1] if candidates else None
-
-
-def tag_trades_with_signals(records: list) -> list:
-    """
-    Look up Optix signal within ±2 hours of each trade entry.
-    Reads KAIROS_PORTAL_URL from environment — silently skips if not set.
-    Only tags trades that don't already have signal_tier set.
-    Preserves existing tags when merging with history.
-    """
-    portal_url = os.getenv('KAIROS_PORTAL_URL', '').rstrip('/')
-    if not portal_url:
-        print('  ℹ️  KAIROS_PORTAL_URL not set — skipping signal tagging')
-        print('     Set it in .env to enable: KAIROS_PORTAL_URL=https://your-portal.pages.dev')
-        return records
-
-    # Only tag untagged trades
-    untagged = [t for t in records if not t.get('signal_tier')]
-    if not untagged:
-        print('  ✅ All trades already tagged with signals')
-        return records
-
-    # Collect unique dates to fetch
-    dates = sorted(set(t['date'] for t in untagged))
-    print(f'  Fetching signals for {len(dates)} dates from {portal_url}...')
-
-    url = f"{portal_url}/api/signal-lookup?dates={','.join(dates)}"
-    try:
-        with urllib.request.urlopen(url, timeout=15) as resp:
-            signals_by_date = json.loads(resp.read())
-    except Exception as e:
-        print(f'  ⚠️  Signal lookup failed: {e} — trades will remain untagged')
-        return records
-
-    # Tag each untagged trade
-    tagged = 0
-    for trade in untagged:
-        date     = trade.get('date', '')
-        day_sigs = signals_by_date.get(date, [])
-        sig      = _find_closest_signal(day_sigs, trade.get('entry_time', ''))
-        if not sig:
-            continue
-
-        rec   = sig.get('recommendation', '')
-        tier  = ('PRIME' if 'PRIME' in rec else
-                 'VALID' if 'VALID' in rec else None)
-        # Score: use bear score for BCS signals, bull score otherwise
-        score = (sig.get('bear', {}).get('score') if 'BCS' in rec
-                 else sig.get('bull', {}).get('score'))
-
-        trade['signal_tier']     = tier
-        trade['signal_score']    = round(score, 2) if score is not None else None
-        trade['regime_at_entry'] = sig.get('regime')
-        if tier:
-            tagged += 1
-
-    print(f'  Signal tagging: {tagged} PRIME/VALID matched, '
-          f'{len(untagged) - tagged} untagged (no signal within ±2h)')
 
 
 # ── Merge new trades with existing ───────────────────────────────────────────
@@ -374,10 +286,6 @@ def run():
             unique_new.append(t)
     classify_trades(unique_new)
     new_records = build_trade_records(unique_new)
-
-    # Tag new trades with Optix signals (±2h match)
-    print(f'\n▶ Tagging trades with Optix signals...')
-    tag_trades_with_signals(new_records)
 
     # Merge with existing history
     print(f'\n▶ Merging with history...')
