@@ -19,6 +19,12 @@ class Position:
     option_type: str  = ''   # 'C' | 'P'
     strike: float     = 0.0
     strategy: str     = ''   # set by broker parser
+    # Live greeks — enriched from broker snapshot after position fetch
+    delta: float      = 0.0  # per-share option delta
+    gamma: float      = 0.0  # per-share option gamma
+    theta: float      = 0.0  # per-share option theta ($/share/day)
+    vega: float       = 0.0  # per-share option vega ($/share per 1% IV)
+    iv: float         = 0.0  # implied volatility as decimal (0.18 = 18%)
 
 
 @dataclass

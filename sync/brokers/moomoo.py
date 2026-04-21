@@ -215,7 +215,8 @@ class MooMooBroker(BrokerBase):
     # ── Positions ────────────────────────────────────────────────────────────
 
     def get_positions(self) -> List[Position]:
-        positions = []
+        positions  = []
+        raw_codes  = []   # parallel list: original moomoo code per position
         try:
             ret, data = self._ctx.position_list_query(
                 trd_env=ft.TrdEnv.REAL,
@@ -247,28 +248,82 @@ class MooMooBroker(BrokerBase):
                     parsed = _parse_option_code(code)
                     positions.append(Position(
                         **common,
-                        symbol    = parsed['symbol'],
-                        contract  = parsed['contract'],
-                        asset_type = 'OPT',
-                        expiry    = parsed['expiry'],
-                        quantity  = qty,
+                        symbol      = parsed['symbol'],
+                        contract    = parsed['contract'],
+                        asset_type  = 'OPT',
+                        expiry      = parsed['expiry'],
+                        quantity    = qty,
                         option_type = parsed['option_type'],
-                        strike    = parsed['strike'],
-                        strategy  = parsed['strategy'],
+                        strike      = parsed['strike'],
+                        strategy    = parsed['strategy'],
                     ))
                 else:
                     positions.append(Position(
                         **common,
-                        symbol    = _stock_symbol(code),
-                        contract  = code,
+                        symbol     = _stock_symbol(code),
+                        contract   = code,
                         asset_type = 'STK',
-                        expiry    = '',
-                        quantity  = qty,
+                        expiry     = '',
+                        quantity   = qty,
                     ))
+                raw_codes.append(code)
+
+            # Enrich option positions with live greeks
+            if positions:
+                self._enrich_greeks(positions, raw_codes)
 
         except Exception as e:
             print(f'  [{self.name}] ⚠️  get_positions: {e}')
         return positions
+
+    def _enrich_greeks(self, positions: List[Position], raw_codes: List[str]) -> None:
+        """
+        Batch-fetch option greeks via get_market_snapshot and write them
+        onto each option Position in-place.
+        Opens a temporary QuoteContext (separate from the trade context).
+        """
+        # Collect (position-index, moomoo-code) pairs for options only
+        opt_pairs = [
+            (i, c) for i, c in enumerate(raw_codes)
+            if i < len(positions) and _OPT_RE.match(c)
+        ]
+        if not opt_pairs:
+            return
+
+        codes = [c for _, c in opt_pairs]
+        try:
+            qctx = ft.OpenQuoteContext(host=OPEND_HOST, port=OPEND_PORT)
+            try:
+                ret, snap = qctx.get_market_snapshot(codes)
+            finally:
+                qctx.close()
+
+            if ret != 0 or snap is None or snap.empty:
+                print(f'  [{self.name}] ⚠️  snapshot empty (ret={ret}) — greeks unavailable')
+                return
+
+            # Build code → row lookup
+            snap_map = {str(r['code']): r for _, r in snap.iterrows()}
+
+            enriched = 0
+            for pos_idx, code in opt_pairs:
+                row = snap_map.get(code)
+                if row is None:
+                    continue
+                p = positions[pos_idx]
+                p.delta = float(row.get('option_delta', 0) or 0)
+                p.gamma = float(row.get('option_gamma', 0) or 0)
+                p.theta = float(row.get('option_theta', 0) or 0)
+                p.vega  = float(row.get('option_vega',  0) or 0)
+                iv_raw  = float(row.get('option_implied_volatility', 0) or 0)
+                # Futu returns IV as a percentage (18.65 = 18.65%) — normalise to decimal
+                p.iv    = iv_raw / 100 if iv_raw > 1 else iv_raw
+                enriched += 1
+
+            print(f'  [{self.name}] ✅ Greeks enriched for {enriched}/{len(opt_pairs)} options')
+
+        except Exception as e:
+            print(f'  [{self.name}] ⚠️  _enrich_greeks: {e}')
 
     # ── Trades ───────────────────────────────────────────────────────────────
 

@@ -137,12 +137,40 @@ def group_positions(positions: List[Position]) -> List[dict]:
         else:
             max_loss = 0.0
 
+        # ── Net greeks (signed by quantity) ──────────────────────────────
+        # net_delta etc. are per-share, scaled by contract count.
+        # risk.js multiplies by 100 (option multiplier) for dollar display.
+        #
+        # Convention:
+        #   net_delta < 0 → position loses when underlying rises (short calls)
+        #   net_theta > 0 → position earns time decay (normal for credit spreads)
+        #   net_vega  < 0 → IV spike hurts (normal for short premium)
+        has_greeks = any(p.delta != 0 or p.theta != 0 for p in group)
+        net_delta = round(sum(p.delta * p.quantity for p in group), 4) if has_greeks else None
+        net_gamma = round(sum(p.gamma * p.quantity for p in group), 6) if has_greeks else None
+        net_theta = round(sum(p.theta * p.quantity for p in group), 4) if has_greeks else None
+        net_vega  = round(sum(p.vega  * p.quantity for p in group), 4) if has_greeks else None
+
+        # Short delta: absolute delta of the primary short leg (closest to money).
+        # This drives the Safe/Watch/Manage threshold badge in the UI.
+        # For a spread, that's the written strike with the highest absolute delta.
+        short_legs_g = sorted(
+            [p for p in group if p.quantity < 0 and p.delta != 0],
+            key=lambda x: abs(x.delta), reverse=True
+        )
+        short_delta = round(abs(short_legs_g[0].delta), 4) if short_legs_g else None
+
+        # IV of short legs (average, decimal form)
+        short_ivs = [p.iv for p in group if p.quantity < 0 and p.iv > 0]
+        short_iv  = round(sum(short_ivs) / len(short_ivs), 4) if short_ivs else None
+
         result.append({
             'broker':         broker,
             'strategy':       strategy,
             'symbol':         symbol,
             'expiry':         expiry,
             'legs':           len(group),
+            'contracts':      int(contracts),
             'strikes':        strikes,
             'entry_credit':   round(entry_credit, 2),
             'max_profit':     max_profit,
@@ -150,6 +178,13 @@ def group_positions(positions: List[Position]) -> List[dict]:
             'unrealized_pnl': round(sum(p.unrealized_pnl for p in group), 2),
             'realized_pnl':   round(sum(p.realized_pnl   for p in group), 2),
             'market_value':   round(sum(p.market_value    for p in group), 2),
+            # Live greeks — None when snapshot unavailable
+            'net_delta':      net_delta,
+            'net_gamma':      net_gamma,
+            'net_theta':      net_theta,
+            'net_vega':       net_vega,
+            'short_delta':    short_delta,
+            'short_iv':       short_iv,
         })
 
     # Stocks
