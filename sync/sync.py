@@ -29,6 +29,7 @@ from brokers.tiger  import TigerBroker
 from brokers.webull import WebullBroker
 from brokers.moomoo import MooMooBroker
 from classifier import classify_trades, group_positions
+from signal_tagger import load_market_history, tag_untagged
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BROKERS      = [TigerBroker(), WebullBroker(), MooMooBroker()]
@@ -290,6 +291,18 @@ def run():
     # Merge with existing history
     print(f'\n▶ Merging with history...')
     all_records = merge_trades(existing_trades, new_records)
+
+    # Tag untagged trades with signal tier + regime
+    print(f'\n▶ Signal tagging...')
+    try:
+        spx, vix = load_market_history()
+        if spx and vix:
+            n_tagged = tag_untagged(all_records, spx, vix)
+            print(f'  Tagged {n_tagged} trades')
+        else:
+            print('  ⚠️  Market history unavailable — skipping signal tagging')
+    except Exception as e:
+        print(f'  ⚠️  Signal tagging failed (non-fatal): {e}')
 
     # Rebuild analytics from full merged history
     print(f'\n▶ Rebuilding analytics...')
