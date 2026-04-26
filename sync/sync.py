@@ -210,7 +210,14 @@ def merge_trades(existing_records: list, new_records: list) -> list:
     """
     trade_map = {t['trade_id']: t for t in existing_records}
     for t in new_records:
-        trade_map[t['trade_id']] = t  # new data overwrites old
+        existing = trade_map.get(t['trade_id'])
+        merged   = {**t}
+        # Preserve signal tags from existing record — never overwrite with None
+        if existing:
+            for field in ('signal_tier', 'signal_score', 'regime_at_entry'):
+                if merged.get(field) is None and existing.get(field) is not None:
+                    merged[field] = existing[field]
+        trade_map[t['trade_id']] = merged
     merged = sorted(trade_map.values(), key=lambda x: x['date'])
     print(f'  Merged: {len(existing_records)} existing + {len(new_records)} new = {len(merged)} total')
     return merged
