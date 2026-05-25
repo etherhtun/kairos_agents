@@ -20,9 +20,10 @@ import ssl_patch; ssl_patch.apply()
 from jobs import creds
 import config
 
-AGENT_DIR  = pathlib.Path.home() / '.kairos-agent'
-DATA_FILE  = AGENT_DIR / 'data.json'
-UPLOAD_URL = config.UPLOAD_URL
+AGENT_DIR    = pathlib.Path.home() / '.kairos-agent'
+DATA_FILE    = AGENT_DIR / 'data.json'
+UPLOAD_URL   = config.UPLOAD_URL     # /api/sync  (D1-backed, v2.5+)
+UPLOAD_URL_V1 = config.UPLOAD_URL_V1  # /api/upload (legacy fallback)
 LOG_DIR    = AGENT_DIR / 'logs'
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE   = LOG_DIR / 'sync.log'
@@ -42,7 +43,8 @@ def _bundled_sync_dir() -> pathlib.Path:
 #          2.2 (remove SSL block from tiger.py, add TigerBroker.close(), fix bare except)
 #          2.3 (live greeks: Position greek fields, moomoo snapshot enrichment, classifier net greeks)
 #          2.4 (signal tagging: signal_tagger module, tag_untagged on every sync)
-BUNDLE_VERSION = '2.4'
+#          2.5 (D1 migration: upload to /api/sync with /api/upload fallback)
+BUNDLE_VERSION = '2.5'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""
@@ -153,28 +155,39 @@ def run_sync(timeout: int = 300) -> dict:
             }
 
         body = DATA_FILE.read_bytes()
-        req  = urllib.request.Request(
-            UPLOAD_URL,
-            data=body,
-            headers={
-                'Authorization': f'Bearer {token}',
-                'Content-Type':  'application/json',
-                'User-Agent':    'kairos-agent/1.0',
-            },
-            method='POST',
-        )
 
-        try:
+        def _post(url):
+            req = urllib.request.Request(
+                url, data=body,
+                headers={
+                    'Authorization': f'Bearer {token}',
+                    'Content-Type':  'application/json',
+                    'User-Agent':    'kairos-agent/2.5',
+                },
+                method='POST',
+            )
             with urllib.request.urlopen(req, timeout=30) as resp:
-                result = json.loads(resp.read())
-                f.write(f'Uploaded: {result}\n')
-                upload_ok = True
+                return json.loads(resp.read())
+
+        upload_ok = False
+        try:
+            # Try new D1-backed endpoint first
+            result = _post(UPLOAD_URL)
+            f.write(f'Uploaded (/api/sync): {result}\n')
+            upload_ok = True
         except urllib.error.HTTPError as e:
-            f.write(f'Upload HTTP {e.code}: {e.read().decode()}\n')
-            upload_ok = False
+            err = e.read().decode()
+            f.write(f'Upload /api/sync HTTP {e.code}: {err}\n')
+            # Fall back to legacy endpoint on 404 (older portal versions)
+            if e.code == 404 and UPLOAD_URL_V1:
+                try:
+                    result = _post(UPLOAD_URL_V1)
+                    f.write(f'Uploaded (/api/upload fallback): {result}\n')
+                    upload_ok = True
+                except Exception as e2:
+                    f.write(f'Fallback upload error: {e2}\n')
         except Exception as e:
             f.write(f'Upload error: {e}\n')
-            upload_ok = False
 
     finished = datetime.datetime.now()
     return {

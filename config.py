@@ -31,7 +31,8 @@ PORTAL_URL = os.getenv('KAIROS_PORTAL_URL', '').rstrip('/')
 OPTIX_URL  = os.getenv('KAIROS_OPTIX_URL', '').rstrip('/')
 
 # Derived endpoints
-UPLOAD_URL     = f"{PORTAL_URL}/api/upload"   if PORTAL_URL else ''
+UPLOAD_URL     = f"{PORTAL_URL}/api/sync"     if PORTAL_URL else ''  # v2.5+: D1-backed
+UPLOAD_URL_V1  = f"{PORTAL_URL}/api/upload"   if PORTAL_URL else ''  # legacy fallback
 SIGNAL_URL     = f"{PORTAL_URL}/api/signals"  if PORTAL_URL else ''
 
 # ── Server ────────────────────────────────────────────────────────────────────
