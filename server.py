@@ -284,7 +284,7 @@ function _startPoll() {{
   if (_polling) return;
   _polling = setInterval(async () => {{
     const text = await loadLog();
-    if (text.includes('Uploaded:') || text.includes('sync failed')) {{
+    if (text.includes('Uploaded (') || text.includes('Uploaded:') || text.includes('sync failed')) {{
       clearInterval(_polling);
       _polling = null;
       setTimeout(() => location.reload(), 1200);
