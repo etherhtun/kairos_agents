@@ -19,6 +19,7 @@ class Position:
     option_type: str  = ''   # 'C' | 'P'
     strike: float     = 0.0
     strategy: str     = ''   # set by broker parser
+    currency: str     = 'USD'  # SGD for SGX, HKD for HK, USD for US
     # Live greeks — enriched from broker snapshot after position fetch
     delta: float      = 0.0  # per-share option delta
     gamma: float      = 0.0  # per-share option gamma
@@ -39,6 +40,7 @@ class Trade:
     strike: float    = 0.0
     expiry: str      = ''
     entry_time: str  = ''   # UTC ISO — used for ±2h signal matching
+    currency: str    = 'USD'  # SGD for SGX, HKD for HK, USD for US
 
 
 @dataclass

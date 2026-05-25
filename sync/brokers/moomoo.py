@@ -60,8 +60,14 @@ def _parse_option_code(code: str) -> dict:
 
 
 def _stock_symbol(code: str) -> str:
-    """US.SPYI → SPYI"""
+    """US.SPYI → SPYI, SG.D05 → D05"""
     return code.split('.', 1)[-1]
+
+
+def _market_currency(code: str) -> str:
+    """SG.D05 → SGD, HK.00700 → HKD, US.AAPL → USD"""
+    prefix = code.split('.')[0].upper()
+    return {'SG': 'SGD', 'HK': 'HKD'}.get(prefix, 'USD')
 
 
 def _trade_date(timestamp: str) -> str:
@@ -149,7 +155,7 @@ class MooMooBroker(BrokerBase):
                 continue
             try:
                 ctx = ft.OpenSecTradeContext(
-                    filter_trdmarket=ft.TrdMarket.US,
+                    filter_trdmarket=ft.TrdMarket.ALL,
                     host=OPEND_HOST, port=OPEND_PORT,
                     security_firm=firm,
                 )
@@ -256,6 +262,7 @@ class MooMooBroker(BrokerBase):
                         option_type = parsed['option_type'],
                         strike      = parsed['strike'],
                         strategy    = parsed['strategy'],
+                        currency    = _market_currency(code),
                     ))
                 else:
                     positions.append(Position(
@@ -265,6 +272,7 @@ class MooMooBroker(BrokerBase):
                         asset_type = 'STK',
                         expiry     = '',
                         quantity   = qty,
+                        currency   = _market_currency(code),
                     ))
                 raw_codes.append(code)
 
@@ -390,6 +398,7 @@ class MooMooBroker(BrokerBase):
                         option_type = parsed['option_type'],
                         strike      = parsed['strike'],
                         expiry      = parsed['expiry'],
+                        currency    = _market_currency(code),
                     ))
                 else:
                     trades.append(Trade(
@@ -404,6 +413,7 @@ class MooMooBroker(BrokerBase):
                         avg_price   = avg_price,
                         realized_pnl = pnl_map.get(order_id, 0.0),
                         strategy    = 'long_stock' if action == 'BUY' else 'short_stock',
+                        currency    = _market_currency(code),
                     ))
 
         except Exception as e:

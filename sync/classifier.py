@@ -190,19 +190,26 @@ def group_positions(positions: List[Position]) -> List[dict]:
     # Stocks
     for p in stk_pos:
         side = 'long_stock' if p.quantity > 0 else 'short_stock'
+        currency = getattr(p, 'currency', 'USD')
+        ccy_sym  = {'SGD': 'S$', 'HKD': 'HK$'}.get(currency, '$')
         result.append({
             'broker':         p.broker,
             'strategy':       side,
             'symbol':         p.symbol,
             'expiry':         '',
             'legs':           1,
-            'strikes':        f"{abs(p.quantity):.0f} shares @ ${p.avg_cost:.2f}",
+            'contracts':      int(abs(p.quantity)),
+            'strikes':        f"{abs(p.quantity):.0f} shares @ {ccy_sym}{p.avg_cost:.2f}",
             'entry_credit':   0,
             'max_profit':     0,
             'max_loss':       0,
             'unrealized_pnl': round(p.unrealized_pnl, 2),
             'realized_pnl':   round(p.realized_pnl,   2),
             'market_value':   round(p.market_value,    2),
+            'currency':       currency,
+            'avg_cost':       round(p.avg_cost, 4),
+            'market_price':   round(p.market_price, 4),
+            'quantity':       p.quantity,
         })
 
     return result

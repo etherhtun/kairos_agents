@@ -193,6 +193,7 @@ def build_trade_records(trades: list) -> list:
         'option_type':  t.option_type,
         'strike':       t.strike,
         'expiry':       t.expiry,
+        'currency':     getattr(t, 'currency', 'USD'),
         # Signal tagging — populated server-side by signal-stats API
         'signal_tier':     None,
         'signal_score':    None,
