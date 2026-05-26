@@ -250,7 +250,11 @@ def run():
     all_new_trades = []
     all_positions  = []
     accounts       = []
+    all_dividends  = []
     active_brokers = []
+
+    # Dividends are infrequent — always fetch a wider window to avoid gaps
+    div_start = (datetime.now() - timedelta(days=365 * FULL_HISTORY_YEARS)).strftime('%Y-%m-%d')
 
     for broker in BROKERS:
         print(f'\n▶ {broker.name.upper()}')
@@ -278,6 +282,10 @@ def run():
             trades = broker.get_trades(start_date, END_DATE)
             all_new_trades.extend(trades)
             print(f'  New trades fetched: {len(trades)}')
+
+            print(f'  Fetching dividends {div_start} → {END_DATE}...')
+            divs = broker.get_dividends(div_start, END_DATE)
+            all_dividends.extend(divs)
 
         except Exception as e:
             print(f'  ❌ {broker.name} error: {e}')
@@ -319,6 +327,14 @@ def run():
     stats      = build_stats(all_records)
     positions  = group_positions(all_positions)
 
+    # Deduplicate dividends by broker+symbol+pay_date
+    div_map = {}
+    for d in all_dividends:
+        key = f"{d['broker']}:{d['symbol']}:{d.get('pay_date','')}"
+        div_map[key] = d
+    deduped_dividends = list(div_map.values())
+    print(f'\n▶ Dividends: {len(deduped_dividends)} total records')
+
     # Build final data.json
     data = {
         'meta': {
@@ -335,6 +351,7 @@ def run():
         'cumulative_pnl': cumulative,
         'stats':          stats,
         'trades':         all_records,
+        'dividends':      deduped_dividends,
     }
 
     with open(OUTPUT_FILE, 'w') as f:

@@ -45,7 +45,8 @@ def _bundled_sync_dir() -> pathlib.Path:
 #          2.4 (signal tagging: signal_tagger module, tag_untagged on every sync)
 #          2.5 (D1 migration: upload to /api/sync with /api/upload fallback)
 #          2.6 (SGX support: TrdMarket.ALL, currency field on trades + positions)
-BUNDLE_VERSION = '2.6'
+#          2.7 (dividend collection: Tiger + Moomoo get_dividends, dividends in payload)
+BUNDLE_VERSION = '2.7'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""

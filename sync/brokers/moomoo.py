@@ -421,3 +421,65 @@ class MooMooBroker(BrokerBase):
 
         print(f'  [{self.name}] ✅ {len(trades)} trade records built')
         return trades
+
+    def get_dividends(self, start_date: str, end_date: str) -> List[dict]:
+        """
+        Fetch dividend history from Moomoo via get_history_order_list_query
+        filtered by fund flow type, or via get_funds_cash_flow if available.
+        Non-fatal — returns [] if the API call fails or is unsupported.
+        """
+        dividends = []
+        try:
+            # Moomoo exposes account cash flow (deposits, withdrawals, dividends, etc.)
+            # via OpenSecTradeContext.get_acc_cashflow() in some SDK versions
+            # and via get_history_deal_list_query() filtered by trd_side in others.
+            # We try get_acc_cashflow first, fall back gracefully.
+            ret, data = self._ctx.get_acc_cashflow(
+                trd_env    = ft.TrdEnv.REAL,
+                acc_id     = self._acc_id,
+                start      = start_date,
+                end        = end_date,
+            )
+
+            if ret != 0 or data is None or data.empty:
+                print(f'  [{self.name}] Dividends: 0 records (cashflow unavailable, ret={ret})')
+                return []
+
+            for _, row in data.iterrows():
+                # Filter for dividend cash flow types
+                cash_type = str(row.get('cash_flow_type', '') or '').upper()
+                if 'DIVIDEND' not in cash_type and 'DIV' not in cash_type:
+                    continue
+
+                code     = str(row.get('code', '') or '').strip()
+                symbol   = _stock_symbol(code) if code else str(row.get('remark', '') or '').strip()
+                amount   = float(row.get('cash_flow_value', 0) or row.get('amount', 0) or 0)
+                date_str = str(row.get('create_time', '') or '')[:10]
+                currency = str(row.get('currency', 'USD') or 'USD')
+
+                if not symbol or amount == 0 or not date_str:
+                    continue
+
+                dividends.append({
+                    'broker':           self.name,
+                    'symbol':           symbol,
+                    'market':           _market_currency(code).replace('SGD', 'SG')
+                                        .replace('HKD', 'HK').replace('USD', 'US')
+                                        if code else 'US',
+                    'pay_date':         date_str,
+                    'ex_date':          None,
+                    'shares':           None,
+                    'amount_per_share': None,
+                    'total_amount':     round(abs(amount), 4),
+                    'currency':         currency,
+                    'source':           'auto',
+                })
+
+        except AttributeError:
+            # get_acc_cashflow not available in this SDK version — skip silently
+            print(f'  [{self.name}] Dividends: 0 records (get_acc_cashflow not in SDK)')
+        except Exception as e:
+            print(f'  [{self.name}] ⚠️  get_dividends: {e}')
+
+        print(f'  [{self.name}] Dividends: {len(dividends)} records found')
+        return dividends

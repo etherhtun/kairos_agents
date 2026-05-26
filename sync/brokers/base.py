@@ -67,3 +67,7 @@ class BrokerBase(ABC):
 
     @abstractmethod
     def get_trades(self, start_date: str, end_date: str) -> List[Trade]: pass
+
+    def get_dividends(self, start_date: str, end_date: str) -> List[dict]:
+        """Override in brokers that support dividend history. Returns [] by default."""
+        return []

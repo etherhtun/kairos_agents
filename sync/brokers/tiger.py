@@ -457,6 +457,74 @@ class TigerBroker(BrokerBase):
                 print(f'    [{self.name}] ⚠️  get_order({order_id}): {e}')
             return empty
 
+    def get_dividends(self, start_date: str, end_date: str) -> List[dict]:
+        """
+        Fetch dividend payment history from Tiger via get_financial_history().
+        Returns a list of dividend dicts ready for the sync payload.
+        Non-fatal — returns [] if the API is unavailable or unsupported.
+        """
+        dividends = []
+        try:
+            start_ms = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp() * 1000)
+            end_ms   = int(datetime.strptime(end_date,   '%Y-%m-%d').timestamp() * 1000) + 86399999
+
+            page = 1
+            while True:
+                try:
+                    records = self._client.get_financial_history(
+                        start_time=start_ms,
+                        end_time=end_ms,
+                        page=page,
+                        size=100,
+                    )
+                except Exception as e:
+                    print(f'  [{self.name}] ⚠️  get_financial_history: {e}')
+                    break
+
+                if not records:
+                    break
+
+                for r in records:
+                    fund_type = str(getattr(r, 'type', '') or '').upper()
+                    if 'DIVIDEND' not in fund_type:
+                        continue
+
+                    symbol    = str(getattr(r, 'symbol', '')    or '').strip()
+                    amount    = float(getattr(r, 'amount', 0)   or 0)
+                    qty       = float(getattr(r, 'quantity', 0) or
+                                      getattr(r, 'shares', 0)   or 0)
+                    timestamp = int(getattr(r, 'timestamp', 0)  or
+                                    getattr(r, 'trade_time', 0) or 0)
+                    currency  = str(getattr(r, 'currency', 'USD') or 'USD')
+                    pay_date  = _ts_to_sgt_date(timestamp) if timestamp else ''
+
+                    if not symbol or amount == 0 or not pay_date:
+                        continue
+
+                    per_share = round(amount / qty, 6) if qty > 0 else None
+                    dividends.append({
+                        'broker':           self.name,
+                        'symbol':           symbol,
+                        'market':           'SG' if currency == 'SGD' else 'US',
+                        'pay_date':         pay_date,
+                        'ex_date':          None,
+                        'shares':           qty or None,
+                        'amount_per_share': per_share,
+                        'total_amount':     round(abs(amount), 4),
+                        'currency':         currency,
+                        'source':           'auto',
+                    })
+
+                if len(records) < 100:
+                    break
+                page += 1
+
+        except Exception as e:
+            print(f'  [{self.name}] ⚠️  get_dividends: {e}')
+
+        print(f'  [{self.name}] Dividends: {len(dividends)} records found')
+        return dividends
+
     def _parse_single_leg(self, contract: str) -> dict:
         parts    = contract.strip().split()
         symbol   = parts[0] if parts else 'SPXW'
