@@ -459,72 +459,61 @@ class TigerBroker(BrokerBase):
 
     def get_dividends(self, start_date: str, end_date: str) -> List[dict]:
         """
-        Fetch dividend payment history from Tiger.
-        Tries multiple SDK method names — non-fatal if unsupported.
+        Fetch dividend payment history from Tiger via get_fund_details().
+        Uses seg_type=SEC, fund_type=DIVIDEND with date-range pagination.
+        Non-fatal — returns [] if the API is unavailable or returns no data.
         """
         dividends = []
         try:
-            start_ms = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp() * 1000)
-            end_ms   = int(datetime.strptime(end_date,   '%Y-%m-%d').timestamp() * 1000) + 86399999
+            from tigeropen.common.consts import SegmentType
+            offset = 0
+            limit  = 100
 
-            # Discover which method this SDK version exposes
-            _CANDIDATES = ('get_financial_history', 'get_account_flow',
-                           'get_asset_activities', 'get_fund_distribution')
-            method_name = next((m for m in _CANDIDATES
-                                if hasattr(self._client, m)), None)
-            if method_name is None:
-                related = sorted(m for m in dir(self._client)
-                                 if not m.startswith('_') and
-                                 any(k in m for k in
-                                     ('flow','history','dividend','fund','asset','activity','cash')))
-                print(f'  [{self.name}] ⚠️  No dividend API on this SDK. '
-                      f'Related methods: {related or "none found"}')
-                print(f'  [{self.name}] Dividends: 0 records found')
-                return dividends
-
-            print(f'  [{self.name}] Using {method_name}() for dividend history')
-            page = 1
             while True:
                 try:
-                    fn = getattr(self._client, method_name)
-                    # get_financial_history uses ms timestamps; get_account_flow uses date strings
-                    if method_name in ('get_financial_history', 'get_asset_activities'):
-                        records = fn(start_time=start_ms, end_time=end_ms,
-                                     page=page, size=100)
-                    else:
-                        records = fn(start_date=start_date, end_date=end_date,
-                                     page=page, size=100)
+                    df = self._client.get_fund_details(
+                        seg_types=SegmentType.SEC,
+                        fund_type='DIVIDEND',
+                        start_date=start_date,
+                        end_date=end_date,
+                        start=offset,
+                        limit=limit,
+                    )
                 except Exception as e:
-                    print(f'  [{self.name}] ⚠️  {method_name}: {e}')
+                    print(f'  [{self.name}] ⚠️  get_fund_details: {e}')
                     break
 
-                if not records:
+                if df is None or (hasattr(df, 'empty') and df.empty):
                     break
 
-                for r in records:
-                    fund_type = str(getattr(r, 'type', '') or '').upper()
-                    if 'DIVIDEND' not in fund_type:
+                for _, row in df.iterrows():
+                    symbol   = str(row.get('symbol', '') or '').strip()
+                    amount   = float(row.get('amount', 0) or 0)
+                    qty      = float(row.get('quantity', 0) or row.get('shares', 0) or 0)
+                    currency = str(row.get('currency', 'USD') or 'USD')
+
+                    # Date field may be pay_date, date, or a timestamp in ms
+                    raw_date = row.get('pay_date') or row.get('date') or row.get('timestamp')
+                    if raw_date is None:
                         continue
-
-                    symbol    = str(getattr(r, 'symbol', '')    or '').strip()
-                    amount    = float(getattr(r, 'amount', 0)   or 0)
-                    qty       = float(getattr(r, 'quantity', 0) or
-                                      getattr(r, 'shares', 0)   or 0)
-                    timestamp = int(getattr(r, 'timestamp', 0)  or
-                                    getattr(r, 'trade_time', 0) or 0)
-                    currency  = str(getattr(r, 'currency', 'USD') or 'USD')
-                    pay_date  = _ts_to_sgt_date(timestamp) if timestamp else ''
+                    try:
+                        # Numeric → treat as ms timestamp
+                        pay_date = _ts_to_sgt_date(int(raw_date))
+                    except (ValueError, TypeError):
+                        pay_date = str(raw_date)[:10]
 
                     if not symbol or amount == 0 or not pay_date:
                         continue
 
-                    per_share = round(amount / qty, 6) if qty > 0 else None
+                    per_share = round(abs(amount) / qty, 6) if qty > 0 else None
+                    market    = 'SG' if currency == 'SGD' else (
+                                'HK' if currency == 'HKD' else 'US')
                     dividends.append({
                         'broker':           self.name,
                         'symbol':           symbol,
-                        'market':           'SG' if currency == 'SGD' else 'US',
+                        'market':           market,
                         'pay_date':         pay_date,
-                        'ex_date':          None,
+                        'ex_date':          str(row.get('ex_date', '') or '') or None,
                         'shares':           qty or None,
                         'amount_per_share': per_share,
                         'total_amount':     round(abs(amount), 4),
@@ -532,9 +521,11 @@ class TigerBroker(BrokerBase):
                         'source':           'auto',
                     })
 
-                if len(records) < 100:
+                # Pagination: stop when fewer rows than limit were returned
+                item_count = int(df.get('item_count', [0]).iloc[0]) if 'item_count' in df.columns else len(df)
+                if len(df) < limit or offset + limit >= item_count:
                     break
-                page += 1
+                offset += limit
 
         except Exception as e:
             print(f'  [{self.name}] ⚠️  get_dividends: {e}')
