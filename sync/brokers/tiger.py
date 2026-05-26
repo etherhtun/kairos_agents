@@ -459,26 +459,43 @@ class TigerBroker(BrokerBase):
 
     def get_dividends(self, start_date: str, end_date: str) -> List[dict]:
         """
-        Fetch dividend payment history from Tiger via get_financial_history().
-        Returns a list of dividend dicts ready for the sync payload.
-        Non-fatal — returns [] if the API is unavailable or unsupported.
+        Fetch dividend payment history from Tiger.
+        Tries multiple SDK method names — non-fatal if unsupported.
         """
         dividends = []
         try:
             start_ms = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp() * 1000)
             end_ms   = int(datetime.strptime(end_date,   '%Y-%m-%d').timestamp() * 1000) + 86399999
 
+            # Discover which method this SDK version exposes
+            _CANDIDATES = ('get_financial_history', 'get_account_flow',
+                           'get_asset_activities', 'get_fund_distribution')
+            method_name = next((m for m in _CANDIDATES
+                                if hasattr(self._client, m)), None)
+            if method_name is None:
+                related = sorted(m for m in dir(self._client)
+                                 if not m.startswith('_') and
+                                 any(k in m for k in
+                                     ('flow','history','dividend','fund','asset','activity','cash')))
+                print(f'  [{self.name}] ⚠️  No dividend API on this SDK. '
+                      f'Related methods: {related or "none found"}')
+                print(f'  [{self.name}] Dividends: 0 records found')
+                return dividends
+
+            print(f'  [{self.name}] Using {method_name}() for dividend history')
             page = 1
             while True:
                 try:
-                    records = self._client.get_financial_history(
-                        start_time=start_ms,
-                        end_time=end_ms,
-                        page=page,
-                        size=100,
-                    )
+                    fn = getattr(self._client, method_name)
+                    # get_financial_history uses ms timestamps; get_account_flow uses date strings
+                    if method_name in ('get_financial_history', 'get_asset_activities'):
+                        records = fn(start_time=start_ms, end_time=end_ms,
+                                     page=page, size=100)
+                    else:
+                        records = fn(start_date=start_date, end_date=end_date,
+                                     page=page, size=100)
                 except Exception as e:
-                    print(f'  [{self.name}] ⚠️  get_financial_history: {e}')
+                    print(f'  [{self.name}] ⚠️  {method_name}: {e}')
                     break
 
                 if not records:

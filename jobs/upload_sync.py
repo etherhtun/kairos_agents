@@ -46,7 +46,8 @@ def _bundled_sync_dir() -> pathlib.Path:
 #          2.5 (D1 migration: upload to /api/sync with /api/upload fallback)
 #          2.6 (SGX support: TrdMarket.ALL, currency field on trades + positions)
 #          2.7 (dividend collection: Tiger + Moomoo get_dividends, dividends in payload)
-BUNDLE_VERSION = '2.7'
+#          2.8 (fix Tiger get_dividends SDK method discovery; fix Moomoo trd_env REAL check)
+BUNDLE_VERSION = '2.8'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""

@@ -164,7 +164,8 @@ class MooMooBroker(BrokerBase):
                     ctx.close()
                     continue
 
-                real = data[data['trd_env'] == 'REAL']
+                # trd_env may be a string 'REAL', an enum, or an int depending on SDK version
+                real = data[data['trd_env'].astype(str).str.upper().str.contains('REAL')]
                 if not real.empty:
                     self._acc_id        = int(real.iloc[0]['acc_id'])
                     self._security_firm = firm_name
@@ -172,6 +173,9 @@ class MooMooBroker(BrokerBase):
                     print(f'  [{self.name}] ✅ Connected via {firm_name} '
                           f'(acc: {self._acc_id})')
                     return True
+                # Debug: show what accounts were actually returned
+                print(f'  [{self.name}] {firm_name}: no REAL account '
+                      f'(found: {data[["acc_id","trd_env"]].to_dict("records")})')
                 ctx.close()
             except Exception as e:
                 # OpenD not running or unreachable
