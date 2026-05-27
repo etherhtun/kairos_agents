@@ -468,12 +468,17 @@ class TigerBroker(BrokerBase):
             from tigeropen.common.consts import SegmentType
             offset = 0
             limit  = 100
+            _logged_sample = False
+
+            # Dividend keyword variants Tiger may use in the fund_type column
+            _DIV_KEYWORDS = ('dividend', 'div', '股息', '股利')
 
             while True:
                 try:
+                    # Omit fund_type — fetch all types and filter client-side
+                    # (Tiger rejects 'DIVIDEND' as fund_type with code 1010)
                     df = self._client.get_fund_details(
                         seg_types=SegmentType.SEC,
-                        fund_type='DIVIDEND',
                         start_date=start_date,
                         end_date=end_date,
                         start=offset,
@@ -486,7 +491,27 @@ class TigerBroker(BrokerBase):
                 if df is None or (hasattr(df, 'empty') and df.empty):
                     break
 
+                # Log sample on first page so we know available columns + fund_types
+                if not _logged_sample and not df.empty:
+                    _logged_sample = True
+                    sample_types = df.get('fund_type', df.get('type',
+                                   df.get('activity_type', None)))
+                    if sample_types is not None:
+                        unique_types = sample_types.dropna().unique().tolist()[:10]
+                        print(f'  [{self.name}] fund_details columns: {list(df.columns[:8])}')
+                        print(f'  [{self.name}] fund_type values (sample): {unique_types}')
+
+                # Identify the fund_type column name
+                type_col = next((c for c in ('fund_type','type','activity_type')
+                                 if c in df.columns), None)
+
                 for _, row in df.iterrows():
+                    # Filter: only dividend rows
+                    if type_col:
+                        ft_val = str(row.get(type_col, '') or '').lower()
+                        if not any(k in ft_val for k in _DIV_KEYWORDS):
+                            continue
+
                     symbol   = str(row.get('symbol', '') or '').strip()
                     amount   = float(row.get('amount', 0) or 0)
                     qty      = float(row.get('quantity', 0) or row.get('shares', 0) or 0)
@@ -497,7 +522,6 @@ class TigerBroker(BrokerBase):
                     if raw_date is None:
                         continue
                     try:
-                        # Numeric → treat as ms timestamp
                         pay_date = _ts_to_sgt_date(int(raw_date))
                     except (ValueError, TypeError):
                         pay_date = str(raw_date)[:10]
@@ -522,7 +546,7 @@ class TigerBroker(BrokerBase):
                     })
 
                 # Pagination: stop when fewer rows than limit were returned
-                item_count = int(df.get('item_count', [0]).iloc[0]) if 'item_count' in df.columns else len(df)
+                item_count = int(df['item_count'].iloc[0]) if 'item_count' in df.columns else len(df)
                 if len(df) < limit or offset + limit >= item_count:
                     break
                 offset += limit
