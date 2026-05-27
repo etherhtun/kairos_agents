@@ -471,7 +471,10 @@ class TigerBroker(BrokerBase):
             _logged_sample = False
 
             # Dividend keyword variants Tiger may use in the fund_type column
-            _DIV_KEYWORDS = ('dividend', 'div', '股息', '股利')
+            _DIV_KEYWORDS = ('dividend', 'div', 'distribution', '股息', '股利')
+
+            # All unique fund_type values seen across all pages (for diagnostics)
+            _all_fund_types: set = set()
 
             while True:
                 try:
@@ -491,19 +494,19 @@ class TigerBroker(BrokerBase):
                 if df is None or (hasattr(df, 'empty') and df.empty):
                     break
 
-                # Log sample on first page so we know available columns + fund_types
+                # Log columns on first page; accumulate all fund_type values
                 if not _logged_sample and not df.empty:
                     _logged_sample = True
-                    sample_types = df.get('fund_type', df.get('type',
-                                   df.get('activity_type', None)))
-                    if sample_types is not None:
-                        unique_types = sample_types.dropna().unique().tolist()[:10]
-                        print(f'  [{self.name}] fund_details columns: {list(df.columns[:8])}')
-                        print(f'  [{self.name}] fund_type values (sample): {unique_types}')
+                    print(f'  [{self.name}] fund_details columns: {list(df.columns[:8])}')
 
                 # Identify the fund_type column name
                 type_col = next((c for c in ('fund_type','type','activity_type')
                                  if c in df.columns), None)
+
+                if type_col:
+                    _all_fund_types.update(
+                        str(v) for v in df[type_col].dropna().unique()
+                    )
 
                 for _, row in df.iterrows():
                     # Filter: only dividend rows
@@ -550,10 +553,14 @@ class TigerBroker(BrokerBase):
                 if len(df) < limit or offset + limit >= item_count:
                     break
                 offset += limit
+                time.sleep(7)   # rate limit: max 10 calls/min → wait 7s between pages
 
         except Exception as e:
             print(f'  [{self.name}] ⚠️  get_dividends: {e}')
 
+        # Print all unique fund_type values seen across all pages
+        if _all_fund_types:
+            print(f'  [{self.name}] All fund_type values seen: {sorted(_all_fund_types)}')
         print(f'  [{self.name}] Dividends: {len(dividends)} records found')
         return dividends
 

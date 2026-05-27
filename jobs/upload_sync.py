@@ -49,7 +49,8 @@ def _bundled_sync_dir() -> pathlib.Path:
 #          2.8 (fix Tiger get_dividends SDK method discovery; fix Moomoo trd_env REAL check)
 #          2.9 (Tiger: use get_fund_details for dividends; Moomoo: robust trd_env str match)
 #          3.0 (Tiger: remove fund_type param entirely, filter client-side with keyword match + diagnostics)
-BUNDLE_VERSION = '3.0'
+#          3.1 (Tiger: rate-limit fix — 7s sleep between pages; log all fund_types; add 'distribution' keyword)
+BUNDLE_VERSION = '3.1'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""
