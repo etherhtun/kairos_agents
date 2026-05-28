@@ -154,8 +154,11 @@ class MooMooBroker(BrokerBase):
             if firm is None:
                 continue
             try:
+                # TrdMarket.ALL added in newer SDK versions — fall back gracefully
+                trd_market = getattr(ft.TrdMarket, 'ALL',
+                             getattr(ft.TrdMarket, 'US', ft.TrdMarket.HK))
                 ctx = ft.OpenSecTradeContext(
-                    filter_trdmarket=ft.TrdMarket.ALL,
+                    filter_trdmarket=trd_market,
                     host=OPEND_HOST, port=OPEND_PORT,
                     security_firm=firm,
                 )
@@ -178,11 +181,13 @@ class MooMooBroker(BrokerBase):
                       f'(found: {data[["acc_id","trd_env"]].to_dict("records")})')
                 ctx.close()
             except Exception as e:
-                # OpenD not running or unreachable
-                if 'connect' in str(e).lower() or 'refused' in str(e).lower():
+                err = str(e).lower()
+                if 'connect' in err or 'refused' in err:
                     print(f'  [{self.name}] OpenD not reachable at '
                           f'{OPEND_HOST}:{OPEND_PORT} — skipping')
                     return False
+                # Surface unexpected errors (e.g. missing SDK attribute)
+                print(f'  [{self.name}] {firm_name}: unexpected error — {e}')
 
         print(f'  [{self.name}] No real account found — skipping')
         return False
