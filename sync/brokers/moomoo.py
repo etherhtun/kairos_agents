@@ -435,20 +435,11 @@ class MooMooBroker(BrokerBase):
 
     def get_dividends(self, start_date: str, end_date: str) -> List[dict]:
         """
-        Fetch dividend history via get_acc_cash_flow (HK market accounts only).
+        Fetch dividend history via get_acc_cash_flow.
+        Actual columns: cashflow_type, cashflow_amount, cashflow_remark, currency.
+        Symbol is parsed from cashflow_remark (e.g. "JEPI 14.926... SHARES DIVIDENDS ...").
         Non-fatal — returns [] if the API call fails or is unsupported.
         """
-        # get_acc_cash_flow requires HK market authority and is unavailable for
-        # Singapore accounts (FUTUSGNP/FUTUSGHK). Detect early and skip rather than
-        # iterating 365 days of ret=-1 responses.
-        _SG_FIRMS = {'FUTUSGNP', 'FUTUSGHK', 'FUTUS'}
-        if self._security_firm and self._security_firm.upper() in _SG_FIRMS:
-            print(f'  [{self.name}] ⚠️  get_acc_cash_flow unavailable for '
-                  f'{self._security_firm} (requires HK market authority). '
-                  f'Add JEPQ/SPYI/BTCI/IAUI dividends manually via the '
-                  f'Portfolio → Dividends "+ Add Manual" button.')
-            return []
-
         # get_acc_cash_flow only accepts a single clearing_date (no range).
         # Iterate each calendar day in the window, rate-limited to avoid throttling.
         # Limit to last 365 days to keep runtime reasonable.
@@ -476,14 +467,22 @@ class MooMooBroker(BrokerBase):
                     continue
 
                 for _, row in data.iterrows():
-                    cash_type = str(row.get('cash_flow_type', '') or '').upper()
+                    # SDK returns 'cashflow_type' (not 'cash_flow_type')
+                    cash_type = str(row.get('cashflow_type', '') or '').upper()
                     if 'DIVIDEND' not in cash_type and 'DIV' not in cash_type:
                         continue
+                    # Skip withholding tax rows — keep only the gross dividend
+                    if 'TAX' in cash_type or 'WITHHOLDING' in cash_type:
+                        continue
 
-                    code     = str(row.get('code', '') or '').strip()
-                    symbol   = _stock_symbol(code) if code else str(row.get('remark', '') or '').strip()
-                    amount   = float(row.get('cash_flow_value', 0) or row.get('amount', 0) or 0)
+                    # SDK returns 'cashflow_amount' (not 'cash_flow_value')
+                    amount   = float(row.get('cashflow_amount', 0) or 0)
                     currency = str(row.get('currency', 'USD') or 'USD')
+
+                    # Symbol is the first word of cashflow_remark
+                    # e.g. "JEPI 14.92650000 SHARES DIVIDENDS 0.38920957 USD PER SHARE"
+                    remark = str(row.get('cashflow_remark', '') or '').strip()
+                    symbol = remark.split()[0] if remark else ''
 
                     if not symbol or amount == 0:
                         continue
@@ -493,12 +492,11 @@ class MooMooBroker(BrokerBase):
                         continue
                     seen.add(key)
 
+                    market = 'SG' if currency == 'SGD' else 'HK' if currency == 'HKD' else 'US'
                     dividends.append({
                         'broker':           self.name,
                         'symbol':           symbol,
-                        'market':           _market_currency(code).replace('SGD', 'SG')
-                                            .replace('HKD', 'HK').replace('USD', 'US')
-                                            if code else 'US',
+                        'market':           market,
                         'pay_date':         date_str,
                         'ex_date':          None,
                         'shares':           None,
