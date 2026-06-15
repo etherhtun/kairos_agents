@@ -463,7 +463,7 @@ class MooMooBroker(BrokerBase):
                     acc_id        = self._acc_id,
                 )
                 if ret != 0 or data is None or data.empty:
-                    time.sleep(0.05)
+                    time.sleep(0.25)
                     continue
 
                 for _, row in data.iterrows():
@@ -506,7 +506,7 @@ class MooMooBroker(BrokerBase):
                         'source':           'auto',
                     })
 
-                time.sleep(0.05)   # ~20 calls/sec — well within Moomoo rate limits
+                time.sleep(0.25)   # 4 calls/sec — 0.05s causes silent empty responses
 
         except Exception as e:
             print(f'  [{self.name}] ⚠️  get_dividends: {e}')

@@ -56,7 +56,8 @@ def _bundled_sync_dir() -> pathlib.Path:
 #          3.5 (Moomoo: get_acc_cash_flow takes single clearing_date — iterate per day instead of range)
 #          3.6 (Moomoo: skip get_acc_cash_flow for FUTUSGNP/SG accounts — requires HK market auth; suggest manual entry)
 #          3.7 (Moomoo: fix column names cashflow_type/cashflow_amount/cashflow_remark; parse symbol from remark)
-BUNDLE_VERSION = '3.7'
+#          3.8 (Moomoo: increase get_acc_cash_flow sleep 0.05s→0.25s; 0.05s causes silent empty responses)
+BUNDLE_VERSION = '3.8'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""
