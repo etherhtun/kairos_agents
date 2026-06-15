@@ -508,6 +508,7 @@ class TigerBroker(BrokerBase):
                         str(v) for v in df[type_col].dropna().unique()
                     )
 
+                _div_row_logged = False
                 for _, row in df.iterrows():
                     # Filter: only dividend rows
                     if type_col:
@@ -515,14 +516,22 @@ class TigerBroker(BrokerBase):
                         if not any(k in ft_val for k in _DIV_KEYWORDS):
                             continue
 
-                    symbol   = str(row.get('symbol', '') or '').strip()
-                    amount   = float(row.get('amount', 0) or 0)
+                    # Log the first dividend row's full column set for diagnostics
+                    if not _div_row_logged:
+                        _div_row_logged = True
+                        print(f'  [{self.name}] First dividend row: {dict(row)}')
+
+                    # Tiger has no 'symbol' column — use contract_name or desc
+                    symbol   = str(row.get('symbol', '') or row.get('contract_name', '') or row.get('desc', '') or '').strip()
+                    amount   = float(row.get('net_amount', 0) or row.get('cash_amount', 0) or row.get('amount', 0) or 0)
                     qty      = float(row.get('quantity', 0) or row.get('shares', 0) or 0)
                     currency = str(row.get('currency', 'USD') or 'USD')
 
-                    # Date field may be pay_date, date, or a timestamp in ms
-                    raw_date = row.get('pay_date') or row.get('date') or row.get('timestamp')
+                    # Tiger uses 'business_date'; fallback to other common names
+                    raw_date = (row.get('business_date') or row.get('pay_date')
+                                or row.get('date') or row.get('timestamp'))
                     if raw_date is None:
+                        print(f'  [{self.name}] Dividend row skipped — no date: symbol={symbol!r} amount={amount}')
                         continue
                     try:
                         pay_date = _ts_to_sgt_date(int(raw_date))
@@ -530,6 +539,7 @@ class TigerBroker(BrokerBase):
                         pay_date = str(raw_date)[:10]
 
                     if not symbol or amount == 0 or not pay_date:
+                        print(f'  [{self.name}] Dividend row skipped — symbol={symbol!r} amount={amount} pay_date={pay_date!r}')
                         continue
 
                     per_share = round(abs(amount) / qty, 6) if qty > 0 else None

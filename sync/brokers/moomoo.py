@@ -443,7 +443,7 @@ class MooMooBroker(BrokerBase):
             # via OpenSecTradeContext.get_acc_cashflow() in some SDK versions
             # and via get_history_deal_list_query() filtered by trd_side in others.
             # We try get_acc_cashflow first, fall back gracefully.
-            ret, data = self._ctx.get_acc_cashflow(
+            ret, data = self._ctx.get_acc_cash_flow(
                 trd_env    = ft.TrdEnv.REAL,
                 acc_id     = self._acc_id,
                 start      = start_date,
