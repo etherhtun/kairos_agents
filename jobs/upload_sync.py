@@ -57,7 +57,8 @@ def _bundled_sync_dir() -> pathlib.Path:
 #          3.6 (Moomoo: skip get_acc_cash_flow for FUTUSGNP/SG accounts — requires HK market auth; suggest manual entry)
 #          3.7 (Moomoo: fix column names cashflow_type/cashflow_amount/cashflow_remark; parse symbol from remark)
 #          3.8 (Moomoo: increase get_acc_cash_flow sleep 0.05s→0.25s; 0.05s causes silent empty responses)
-BUNDLE_VERSION = '3.8'
+#          3.9 (Moomoo: store net dividend amount — subtract withholding tax from gross)
+BUNDLE_VERSION = '3.9'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""

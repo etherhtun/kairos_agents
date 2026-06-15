@@ -466,31 +466,41 @@ class MooMooBroker(BrokerBase):
                     time.sleep(0.25)
                     continue
 
+                # Collect gross dividends and withholding tax separately,
+                # then net them per symbol before appending.
+                gross: dict = {}  # symbol -> (amount, currency)
+                tax:   dict = {}  # symbol -> amount (negative)
+
                 for _, row in data.iterrows():
-                    # SDK returns 'cashflow_type' (not 'cash_flow_type')
                     cash_type = str(row.get('cashflow_type', '') or '').upper()
                     if 'DIVIDEND' not in cash_type and 'DIV' not in cash_type:
                         continue
-                    # Skip withholding tax rows — keep only the gross dividend
-                    if 'TAX' in cash_type or 'WITHHOLDING' in cash_type:
-                        continue
 
-                    # SDK returns 'cashflow_amount' (not 'cash_flow_value')
                     amount   = float(row.get('cashflow_amount', 0) or 0)
                     currency = str(row.get('currency', 'USD') or 'USD')
+                    remark   = str(row.get('cashflow_remark', '') or '').strip()
+                    symbol   = remark.split()[0] if remark else ''
 
-                    # Symbol is the first word of cashflow_remark
-                    # e.g. "JEPI 14.92650000 SHARES DIVIDENDS 0.38920957 USD PER SHARE"
-                    remark = str(row.get('cashflow_remark', '') or '').strip()
-                    symbol = remark.split()[0] if remark else ''
+                    if not symbol:
+                        continue
 
-                    if not symbol or amount == 0:
+                    if 'TAX' in cash_type or 'WITHHOLDING' in cash_type:
+                        tax[symbol] = tax.get(symbol, 0) + amount  # negative
+                    else:
+                        gross[symbol] = (abs(amount), currency)
+
+                for symbol, (g_amount, currency) in gross.items():
+                    if g_amount == 0:
                         continue
 
                     key = f'{symbol}:{date_str}'
                     if key in seen:
                         continue
                     seen.add(key)
+
+                    # Subtract withholding tax to get net amount
+                    tax_amount  = abs(tax.get(symbol, 0))
+                    net_amount  = round(g_amount - tax_amount, 4)
 
                     market = 'SG' if currency == 'SGD' else 'HK' if currency == 'HKD' else 'US'
                     dividends.append({
@@ -501,7 +511,7 @@ class MooMooBroker(BrokerBase):
                         'ex_date':          None,
                         'shares':           None,
                         'amount_per_share': None,
-                        'total_amount':     round(abs(amount), 4),
+                        'total_amount':     net_amount,
                         'currency':         currency,
                         'source':           'auto',
                     })
