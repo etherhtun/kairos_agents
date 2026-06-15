@@ -12,6 +12,8 @@ No credentials file needed — OpenD handles authentication.
 
 import os
 import re
+import time
+from datetime import date, timedelta
 from typing import List, Optional
 
 from .base import BrokerBase, Position, Trade, AccountSummary
@@ -437,56 +439,67 @@ class MooMooBroker(BrokerBase):
         filtered by fund flow type, or via get_funds_cash_flow if available.
         Non-fatal — returns [] if the API call fails or is unsupported.
         """
+        # get_acc_cash_flow only accepts a single clearing_date (no range).
+        # Iterate each calendar day in the window, rate-limited to avoid throttling.
+        # Limit to last 365 days to keep runtime reasonable.
         dividends = []
         try:
-            # Moomoo exposes account cash flow (deposits, withdrawals, dividends, etc.)
-            # via OpenSecTradeContext.get_acc_cashflow() in some SDK versions
-            # and via get_history_deal_list_query() filtered by trd_side in others.
-            # We try get_acc_cashflow first, fall back gracefully.
-            ret, data = self._ctx.get_acc_cash_flow(
-                trd_env    = ft.TrdEnv.REAL,
-                acc_id     = self._acc_id,
-                start      = start_date,
-                end        = end_date,
-            )
+            start_dt = date.fromisoformat(start_date)
+            end_dt   = date.fromisoformat(end_date)
+            # Cap lookback to 365 days
+            earliest = end_dt - timedelta(days=365)
+            start_dt = max(start_dt, earliest)
 
-            if ret != 0 or data is None or data.empty:
-                print(f'  [{self.name}] Dividends: 0 records (cashflow unavailable, ret={ret})')
-                return []
+            seen = set()
+            current = start_dt
+            while current <= end_dt:
+                date_str = current.strftime('%Y-%m-%d')
+                current += timedelta(days=1)
 
-            for _, row in data.iterrows():
-                # Filter for dividend cash flow types
-                cash_type = str(row.get('cash_flow_type', '') or '').upper()
-                if 'DIVIDEND' not in cash_type and 'DIV' not in cash_type:
+                ret, data = self._ctx.get_acc_cash_flow(
+                    clearing_date = date_str,
+                    trd_env       = ft.TrdEnv.REAL,
+                    acc_id        = self._acc_id,
+                )
+                if ret != 0 or data is None or data.empty:
+                    time.sleep(0.05)
                     continue
 
-                code     = str(row.get('code', '') or '').strip()
-                symbol   = _stock_symbol(code) if code else str(row.get('remark', '') or '').strip()
-                amount   = float(row.get('cash_flow_value', 0) or row.get('amount', 0) or 0)
-                date_str = str(row.get('create_time', '') or '')[:10]
-                currency = str(row.get('currency', 'USD') or 'USD')
+                for _, row in data.iterrows():
+                    cash_type = str(row.get('cash_flow_type', '') or '').upper()
+                    if 'DIVIDEND' not in cash_type and 'DIV' not in cash_type:
+                        continue
 
-                if not symbol or amount == 0 or not date_str:
-                    continue
+                    code     = str(row.get('code', '') or '').strip()
+                    symbol   = _stock_symbol(code) if code else str(row.get('remark', '') or '').strip()
+                    amount   = float(row.get('cash_flow_value', 0) or row.get('amount', 0) or 0)
+                    currency = str(row.get('currency', 'USD') or 'USD')
 
-                dividends.append({
-                    'broker':           self.name,
-                    'symbol':           symbol,
-                    'market':           _market_currency(code).replace('SGD', 'SG')
-                                        .replace('HKD', 'HK').replace('USD', 'US')
-                                        if code else 'US',
-                    'pay_date':         date_str,
-                    'ex_date':          None,
-                    'shares':           None,
-                    'amount_per_share': None,
-                    'total_amount':     round(abs(amount), 4),
-                    'currency':         currency,
-                    'source':           'auto',
-                })
+                    if not symbol or amount == 0:
+                        continue
 
-        except AttributeError:
-            # get_acc_cashflow not available in this SDK version — skip silently
-            print(f'  [{self.name}] Dividends: 0 records (get_acc_cashflow not in SDK)')
+                    key = f'{symbol}:{date_str}'
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    dividends.append({
+                        'broker':           self.name,
+                        'symbol':           symbol,
+                        'market':           _market_currency(code).replace('SGD', 'SG')
+                                            .replace('HKD', 'HK').replace('USD', 'US')
+                                            if code else 'US',
+                        'pay_date':         date_str,
+                        'ex_date':          None,
+                        'shares':           None,
+                        'amount_per_share': None,
+                        'total_amount':     round(abs(amount), 4),
+                        'currency':         currency,
+                        'source':           'auto',
+                    })
+
+                time.sleep(0.05)   # ~20 calls/sec — well within Moomoo rate limits
+
         except Exception as e:
             print(f'  [{self.name}] ⚠️  get_dividends: {e}')
 
