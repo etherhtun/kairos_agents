@@ -141,8 +141,16 @@ When the user clicks "Reset & Resync" on the dashboard:
 
 This covers the full infrastructure setup for both the portal (`kairos/`) and the agent upload endpoint.
 
-### Step 1 — R2 Bucket (trade data storage)
+### Step 1 — R2 Bucket (legacy shadow copy) + D1 Database (primary)
 
+**D1 (primary store since v2.5):**
+```
+Cloudflare Dashboard → Workers & Pages → D1 → Create database
+  Name: kairos-db
+  Run schema.sql to create tables
+```
+
+**R2 (legacy shadow copy — kept during rollout):**
 ```
 Cloudflare Dashboard → R2 → Create bucket
   Name: kairos-profiles
@@ -240,10 +248,8 @@ Without the Bypass policy on `/api/upload`, the agent cannot POST trade data —
 In `jobs/upload_sync.py`:
 ```python
 # Bump whenever sync/, brokers/, or classifier.py changes.
-# History: 1.0 (initial), 2.0 (CSP/CC + module cache fix),
-#          2.1 (Tiger net value + INCREMENTAL_DAYS=90),
-#          2.2 (remove SSL block, TigerBroker.close(), fix bare except)
-BUNDLE_VERSION = '2.2'
+# See CLAUDE.md for full history.
+BUNDLE_VERSION = '3.7'
 ```
 
 > `BUNDLE_VERSION` controls re-extraction of `sync/` from the PyInstaller bundle to `~/.kairos-agent/sync/`. Users with older installs automatically get fresh sync code on their next run.
@@ -252,16 +258,16 @@ BUNDLE_VERSION = '2.2'
 
 ```bash
 git add .
-git commit -m "chore: bump to v1.5.5"
+git commit -m "chore: bump to v2.1.6"
 git push
-git tag v1.5.5
-git push origin v1.5.5
+git tag v2.1.6
+git push origin v2.1.6
 ```
 
 GitHub Actions (`.github/workflows/release.yml`) will:
-- Build `Kairos-v1.5.5-mac.dmg` on a macOS runner
-- Build `Kairos-v1.5.5-windows.zip` on a Windows runner
-- Build and push `ghcr.io/etherhtun/kairos-agent:v1.5.5` and `:latest`
+- Build `Kairos-v2.1.6-mac.dmg` on a macOS runner
+- Build `Kairos-v2.1.6-windows.zip` on a Windows runner
+- Build and push `ghcr.io/etherhtun/kairos-agent:v2.1.6` and `:latest`
 - Upload all artifacts to the GitHub Release automatically
 
 > `CFBundleShortVersionString` in `kairos.spec` is set automatically from the `APP_VERSION` environment variable passed by CI — no manual edit needed.
