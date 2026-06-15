@@ -54,7 +54,8 @@ def _bundled_sync_dir() -> pathlib.Path:
 #          3.3 (fix Moomoo get_acc_cashflow → get_acc_cash_flow typo; Tiger: try net_amount/cash_amount + row diagnostics)
 #          3.4 (Tiger: fix symbol from contract_name/desc, date from business_date)
 #          3.5 (Moomoo: get_acc_cash_flow takes single clearing_date — iterate per day instead of range)
-BUNDLE_VERSION = '3.5'
+#          3.6 (Moomoo: skip get_acc_cash_flow for FUTUSGNP/SG accounts — requires HK market auth; suggest manual entry)
+BUNDLE_VERSION = '3.6'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""

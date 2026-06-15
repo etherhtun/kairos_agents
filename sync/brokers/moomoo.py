@@ -435,10 +435,20 @@ class MooMooBroker(BrokerBase):
 
     def get_dividends(self, start_date: str, end_date: str) -> List[dict]:
         """
-        Fetch dividend history from Moomoo via get_history_order_list_query
-        filtered by fund flow type, or via get_funds_cash_flow if available.
+        Fetch dividend history via get_acc_cash_flow (HK market accounts only).
         Non-fatal — returns [] if the API call fails or is unsupported.
         """
+        # get_acc_cash_flow requires HK market authority and is unavailable for
+        # Singapore accounts (FUTUSGNP/FUTUSGHK). Detect early and skip rather than
+        # iterating 365 days of ret=-1 responses.
+        _SG_FIRMS = {'FUTUSGNP', 'FUTUSGHK', 'FUTUS'}
+        if self._security_firm and self._security_firm.upper() in _SG_FIRMS:
+            print(f'  [{self.name}] ⚠️  get_acc_cash_flow unavailable for '
+                  f'{self._security_firm} (requires HK market authority). '
+                  f'Add JEPQ/SPYI/BTCI/IAUI dividends manually via the '
+                  f'Portfolio → Dividends "+ Add Manual" button.')
+            return []
+
         # get_acc_cash_flow only accepts a single clearing_date (no range).
         # Iterate each calendar day in the window, rate-limited to avoid throttling.
         # Limit to last 365 days to keep runtime reasonable.
