@@ -110,7 +110,7 @@ BUNDLE_VERSION = '3.7'
 | Method | `ctx.get_acc_cash_flow(clearing_date='YYYY-MM-DD', trd_env=TrdEnv.REAL, acc_id=...)` |
 | Date param | **Single date only** — no range. Must iterate per calendar day. |
 | Type filter | `cashflow_type` column (not `cash_flow_type`) — filter for `'DIVIDEND'` or `'DIV'` in value |
-| Withholding tax | `cashflow_type` contains `'TAX'` or `'WITHHOLDING'` — **skip these rows**, only keep the gross dividend row |
+| Withholding tax | `cashflow_type` contains `'TAX'` or `'WITHHOLDING'` — collect separately per symbol and **subtract from gross** to get net amount stored in `total_amount` |
 | Amount column | `cashflow_amount` (not `cash_flow_value` or `amount`) |
 | Symbol | Parse from `cashflow_remark` — first word is always the ticker, e.g. `"JEPI 14.92650... SHARES DIVIDENDS ..."` |
 | Rate limit | 0.05s sleep per day — ~20 calls/sec, well within Moomoo limits |
