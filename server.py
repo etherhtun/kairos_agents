@@ -212,7 +212,7 @@ def _dashboard() -> str:
     setup_dot  = 'ok' if setup_done else 'bad'
     setup_txt  = 'Complete' if setup_done else 'Not configured'
     app_ver    = os.environ.get('APP_VERSION', '')
-    ver_label  = f'v{app_ver}' if app_ver else 'Kairos Agent'
+    ver_label  = app_ver if app_ver else 'Kairos Agent'
 
     return _page('Kairos Agent', f"""
 <div class="card" style="width:500px;max-width:96vw">
