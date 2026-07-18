@@ -216,6 +216,29 @@ Query D1 directly via Cloudflare dashboard or check the upload response for `"di
 
 ---
 
+### OpenD `Login failed` / `limit reached` after a Moomoo password change
+
+When the Moomoo password changes, **OpenD keeps its old one** and retries until Moomoo
+locks the account (`login error has reached its limit. Please try again after HH:MM`).
+This hits **both** OpenD instances on the account — the Mac's (serving this agent) and
+the **VM's** (serving `kairos-feeder`). The password is **not stored in any kairos repo**;
+it lives only in OpenD's config (`OpenD.xml` → `<login_pwd_md5>` = 32-char MD5).
+
+**Fix:**
+1. Stop retrying until the lockout time passes (each failed login re-arms it). Quit the
+   Mac OpenD app (and stop the VM's `opend` container + feeder).
+2. Update the password in **each** OpenD:
+   - **Mac OpenD app** — log in with the new password via the app UI.
+   - **VM OpenD (Docker)** — full step-by-step runbook (config path, `docker cp` edit,
+     `printf | md5sum`) is in **`kairos-feeder/CLAUDE.md` → "Runbook: OpenD login /
+     Moomoo password change"**.
+3. A clean login prints `Login successful` + entitlements (`US Stocks: LV3`).
+
+⚠️ Two OpenD instances on one Moomoo account can kick each other off → *intermittent*
+lockouts even with the right password. If that recurs, split to two sub-accounts.
+
+---
+
 ### Moomoo `get_acc_cash_flow` returns `ret=-1`
 
 Common error messages and fixes:
