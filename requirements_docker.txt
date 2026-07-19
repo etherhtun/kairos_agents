@@ -1,2 +1,3 @@
 certifi
 truststore; python_version >= "3.10"
+tzdata  # zoneinfo tz database for the US market-hours gate (slim image has none)
