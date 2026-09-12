@@ -125,6 +125,13 @@ class TigerBroker(BrokerBase):
             str(Path.home() / '.kairos-agent' / 'tiger_openapi_config.properties')
         )
 
+        # Moomoo-only users have neither the props file nor TIGER_ID — that is
+        # a normal setup, not an error. Skip quietly (same as webull) instead of
+        # raising "private key not found" into the ❌ broker-error line.
+        if not Path(props).exists() and not os.getenv('TIGER_ID'):
+            print(f'  [{self.name}] Not configured — skipping')
+            return False
+
         config = TigerOpenClientConfig()
         if Path(props).exists():
             self._load_props(config, props)

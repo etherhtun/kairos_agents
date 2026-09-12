@@ -58,7 +58,10 @@ def _bundled_sync_dir() -> pathlib.Path:
 #          3.7 (Moomoo: fix column names cashflow_type/cashflow_amount/cashflow_remark; parse symbol from remark)
 #          3.8 (Moomoo: increase get_acc_cash_flow sleep 0.05s→0.25s; 0.05s causes silent empty responses)
 #          3.9 (Moomoo: store net dividend amount — subtract withholding tax from gross)
-BUNDLE_VERSION = '3.11'
+#          3.10 (sync: commit a broker's data only after ALL its fetches succeed; merge_trades keyed by (broker, trade_id))
+#          3.11 (Moomoo: avg_cost from average_cost (original basis) to match unrealized_pl; Tiger: derive market_price when 0)
+#          3.12 (Tiger: "Not configured — skipping" for Moomoo-only users instead of a ❌ private-key error)
+BUNDLE_VERSION = '3.12'
 
 def ensure_agent_dir():
     """Copy bundled sync code to ~/.kairos-agent/sync/, updating if stale."""
