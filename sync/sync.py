@@ -209,16 +209,20 @@ def merge_trades(existing_records: list, new_records: list) -> list:
     Deduplicates by trade_id — existing records are the source of truth
     for old data, new records update/add recent data.
     """
-    trade_map = {t['trade_id']: t for t in existing_records}
+    # Key on (broker, trade_id) to match D1's (user_sub, broker, trade_id)
+    # uniqueness — a bare trade_id would drop one trade if two brokers ever
+    # issue the same order id.
+    def _key(t): return (t.get('broker'), t['trade_id'])
+    trade_map = {_key(t): t for t in existing_records}
     for t in new_records:
-        existing = trade_map.get(t['trade_id'])
+        existing = trade_map.get(_key(t))
         merged   = {**t}
         # Preserve signal tags from existing record — never overwrite with None
         if existing:
             for field in ('signal_tier', 'signal_score', 'regime_at_entry'):
                 if merged.get(field) is None and existing.get(field) is not None:
                     merged[field] = existing[field]
-        trade_map[t['trade_id']] = merged
+        trade_map[_key(t)] = merged
     merged = sorted(trade_map.values(), key=lambda x: x['date'])
     print(f'  Merged: {len(existing_records)} existing + {len(new_records)} new = {len(merged)} total')
     return merged
@@ -262,33 +266,44 @@ def run():
             if not broker.connect():
                 continue
 
-            active_brokers.append(broker.name)
-
+            # Fetch into locals FIRST. Only after every call for this broker
+            # succeeds do we commit its data to the shared lists and add it to
+            # active_brokers. Rationale: the portal scopes its per-broker
+            # position/account REPLACE to meta.brokers (== active_brokers). If a
+            # broker connected but then a fetch threw, adding it here anyway made
+            # the portal delete that broker's good rows and replace them with the
+            # empty/partial set collected before the throw — a partial failure
+            # rendered as "flat / no positions". Excluding it preserves its
+            # existing D1 data untouched until the next clean sync.
             acct = broker.get_account()
-            accounts.append({
+            b_account = {
                 'broker':     broker.name,
                 'account_id': acct.account_id,
                 'net_value':  acct.net_value,
                 'cash':       acct.cash,
                 'currency':   acct.currency,
-            })
+            }
             print(f'  Account: {acct.account_id}  Net: {acct.net_value:,.2f} {acct.currency}')
 
-            positions = broker.get_positions()
-            all_positions.extend(positions)
-            print(f'  Positions: {len(positions)}')
+            b_positions = broker.get_positions()
+            print(f'  Positions: {len(b_positions)}')
 
             print(f'  Fetching trades {start_date} → {END_DATE}...')
-            trades = broker.get_trades(start_date, END_DATE)
-            all_new_trades.extend(trades)
-            print(f'  New trades fetched: {len(trades)}')
+            b_trades = broker.get_trades(start_date, END_DATE)
+            print(f'  New trades fetched: {len(b_trades)}')
 
             print(f'  Fetching dividends {div_start} → {END_DATE}...')
-            divs = broker.get_dividends(div_start, END_DATE)
-            all_dividends.extend(divs)
+            b_divs = broker.get_dividends(div_start, END_DATE)
+
+            # All fetches OK — commit this broker atomically.
+            accounts.append(b_account)
+            all_positions.extend(b_positions)
+            all_new_trades.extend(b_trades)
+            all_dividends.extend(b_divs)
+            active_brokers.append(broker.name)
 
         except Exception as e:
-            print(f'  ❌ {broker.name} error: {e}')
+            print(f'  ❌ {broker.name} error — kept OUT of this sync so existing data is preserved: {e}')
         finally:
             if hasattr(broker, 'close'):
                 broker.close()

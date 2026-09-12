@@ -245,13 +245,23 @@ class TigerBroker(BrokerBase):
                 opt_type = opt_code[6]
                 try: strike = int(opt_code[7:]) / 1000 if len(opt_code) > 7 else 0.0
                 except (ValueError, TypeError): strike = 0.0
+            qty  = float(getattr(p,'position_qty',0) or getattr(p,'quantity',0) or 0)
+            mval = float(getattr(p,'market_value',0) or 0)
+            mprice = float(getattr(p,'market_price',0) or 0)
+            # The Tiger SDK STK Position populates market_value but often leaves the
+            # per-share market_price at 0 → the portal then shows a stock's
+            # unrealized as $0/breakeven. Derive it from value/qty when absent
+            # (×100 multiplier for options).
+            if not mprice and qty:
+                mult = 100 if asset_type == 'OPT' else 1
+                mprice = mval / (qty * mult)
             return Position(
                 broker=self.name, symbol=symbol, contract=contract,
                 asset_type=asset_type, expiry=expiry,
-                quantity=float(getattr(p,'position_qty',0) or getattr(p,'quantity',0) or 0),
+                quantity=qty,
                 avg_cost=float(getattr(p,'average_cost',0) or 0),
-                market_price=float(getattr(p,'market_price',0) or 0),
-                market_value=float(getattr(p,'market_value',0) or 0),
+                market_price=mprice,
+                market_value=mval,
                 unrealized_pnl=float(getattr(p,'unrealized_pnl',0) or 0),
                 realized_pnl=float(getattr(p,'realized_pnl',0) or 0),
                 option_type=opt_type, strike=strike, strategy='',
