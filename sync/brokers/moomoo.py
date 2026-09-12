@@ -254,10 +254,16 @@ class MooMooBroker(BrokerBase):
 
                 common = dict(
                     broker       = self.name,
-                    avg_cost     = float(row.get('cost_price', 0) or 0),
+                    # Use ORIGINAL average cost (matches Tiger + the unrealized_pl basis).
+                    # `cost_price`/`diluted_cost` is ROC-adjusted (lower) and pairing it with
+                    # `unrealized_pl` (which is vs original cost) showed an impossible % on
+                    # Return-of-Capital funds like ULTY/MSTY. Fall back to cost_price if the
+                    # SDK build has no average_cost. Distributions are tracked separately as
+                    # dividends, so price P&L and income never mix.
+                    avg_cost     = float(row.get('average_cost', 0) or row.get('cost_price', 0) or 0),
                     market_price = float(row.get('current_price', 0) or 0),
                     market_value = float(row.get('market_val', 0) or 0),
-                    unrealized_pnl = float(row.get('unrealized_pl', 0) or 0),
+                    unrealized_pnl = float(row.get('unrealized_pl', 0) or 0),  # vs original avg cost
                     realized_pnl   = float(row.get('realized_pl', 0) or 0),
                 )
 
