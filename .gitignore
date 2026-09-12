@@ -26,3 +26,9 @@ data.backup.json
 
 # Wrangler local dev cache (belongs in kairos/ portal, not here)
 .wrangler/
+
+# Agent runtime output — contains REAL brokerage holdings, never commit
+data.json
+# Local broker probe / dev scripts (not part of the shipped agent)
+test_*.py
+test-kl.js
