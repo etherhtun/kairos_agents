@@ -27,7 +27,11 @@ if _env_file.exists():
                 os.environ.setdefault(k.strip(), v.strip())
 
 # ── URLs ─────────────────────────────────────────────────────────────────────
-PORTAL_URL = os.getenv('KAIROS_PORTAL_URL', '').rstrip('/')
+# Default to the live journal so a bare upload token works out of the box; the
+# env var still overrides for dev / self-hosting. Without a default, an unset
+# KAIROS_PORTAL_URL made UPLOAD_URL '' → urllib "unknown url type: ''" on upload.
+DEFAULT_PORTAL_URL = 'https://journal.kairosoptix.com'
+PORTAL_URL = (os.getenv('KAIROS_PORTAL_URL') or DEFAULT_PORTAL_URL).rstrip('/')
 OPTIX_URL  = os.getenv('KAIROS_OPTIX_URL', '').rstrip('/')
 
 # Derived endpoints
